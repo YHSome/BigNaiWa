@@ -472,6 +472,36 @@ body {
   padding: 2px;
 }
 
+/* ---------------- 榜单切换标签（最近 / 总榜） ---------------- */
+
+.board-tabs {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+
+.board-tab {
+  flex: 1;
+  min-height: 40px;
+  font: inherit;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--ink-soft);
+  border: 1px solid rgba(176, 138, 104, .35);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, .55);
+  cursor: pointer;
+  transition: background .15s ease, color .15s ease, border-color .15s ease;
+}
+
+.board-tab:hover { background: rgba(255, 255, 255, .85); }
+
+.board-tab.is-active {
+  color: #fff;
+  border-color: transparent;
+  background: linear-gradient(135deg, #ff8a5b, var(--brand) 55%, var(--brand-dark));
+}
+
 .board-empty {
   margin: 28px 8px;
   font-size: 13px;
