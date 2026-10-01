@@ -129,7 +129,7 @@
 <div class="modal" id="boardModal" aria-hidden="true" role="dialog" aria-label="排行榜">
   <div class="modal-card">
     <header class="modal-head">
-      <h2>🏆 最近高手榜</h2>
+      <h2>🏆 排行榜</h2>
       <button class="icon-btn" id="boardClose" type="button" aria-label="关闭">✕</button>
     </header>
     <div class="nick-row">
@@ -137,9 +137,13 @@
       <input class="nick-input" id="nickInput" type="text" maxlength="12"
              placeholder="默认用户" autocomplete="nickname" enterkeyhint="done">
     </div>
+    <div class="board-tabs" role="tablist">
+      <button class="board-tab is-active" id="tabRecent" type="button" role="tab">最近高手</button>
+      <button class="board-tab" id="tabAllTime" type="button" role="tab">总榜 Top 20</button>
+    </div>
     <div class="board-list" id="boardList"></div>
     <footer class="modal-foot">
-      <span class="board-note">只取最近 20 次提交，成绩会被后来的人挤下去</span>
+      <span class="board-note" id="boardNote">只取最近 20 次提交，成绩会被后来的人挤下去</span>
       <button class="btn" id="boardRefresh" type="button">刷新</button>
     </footer>
   </div>
