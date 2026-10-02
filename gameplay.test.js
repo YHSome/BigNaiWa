@@ -83,6 +83,7 @@ sandbox.window.addEventListener = (t, fn) => { winListeners[t] = fn; };
 vm.createContext(sandbox);
 const load = (f) => vm.runInContext(fs.readFileSync(path.join(root, f), 'utf8'), sandbox, { filename: f });
 load('assets/fruits/parts.js');
+load('sim.js');      // 玩法数值（复活币 / 清场 / 定格）都住在模拟里
 load('game.js');
 
 let gameOverCalls = 0;
@@ -181,6 +182,7 @@ for (let i = 0; i < 60 && !merged; i++) {
   G.stepPhysics(1 / 60);
   if (G.state.balls.length === 0) merged = true;
 }
+G.pumpEvents();          // sim 只发事件，大字飘分和复活币徽章是这一层刷的
 ok(merged, '两只神奶蛙相撞后一起消失');
 eq(G.state.score, G.MAX_BONUS, '得分正好是 MAX_BONUS');
 eq(G.MAX_BONUS, 500, 'MAX_BONUS 是 500（原来是 100）');

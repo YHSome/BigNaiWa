@@ -563,6 +563,142 @@ body {
   gap: 10px;
 }
 
+/* ---------------- 回放 HUD ---------------- */
+
+/* 看存档 / 看榜上某一局时才出现，压在棋盘顶部当一条横幅。
+   用深色底是因为它盖在棋盘上，浅色会和果子糊在一起。 */
+.replay-hud {
+  position: absolute;
+  left: 8px;
+  right: 8px;
+  top: 8px;
+  z-index: 6;
+  padding: 9px 11px 11px;
+  border-radius: 16px;
+  background: rgba(30, 23, 17, .86);
+  color: #fff;
+  box-shadow: 0 8px 26px rgba(0, 0, 0, .3);
+  animation: replay-in .18s ease-out;
+}
+.replay-hud[hidden] { display: none; }
+@keyframes replay-in { from { opacity: 0; transform: translateY(-8px); } }
+@media (prefers-reduced-motion: reduce) { .replay-hud { animation: none; } }
+
+.replay-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.replay-badge {
+  flex: 0 0 auto;
+  padding: 2px 7px;
+  border-radius: 999px;
+  font-size: 11.5px;
+  font-weight: 700;
+  background: rgba(255, 255, 255, .16);
+}
+/* 验证结论直接写在横幅上：❌ 的要一眼看见，✅ 的反而可以低调点 */
+.replay-badge.is-ok      { background: rgba(63, 191, 106, .9); }
+.replay-badge.is-bad     { background: #e0455a; }
+.replay-badge.is-pending { background: #f0b429; color: #3a2a08; }
+
+.replay-title {
+  flex: 1 1 auto;
+  min-width: 0;
+  font-size: 13px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  opacity: .88;
+}
+
+.replay-hud .icon-btn {
+  flex: 0 0 auto;
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  color: #fff;
+  background: rgba(255, 255, 255, .14);
+}
+
+.replay-score {
+  margin: 7px 0 6px;
+  font-size: 12px;
+  opacity: .8;
+}
+.replay-score strong {
+  margin-right: 6px;
+  font-size: 26px;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+  opacity: 1;
+}
+.replay-claimed { color: #ffb3a7; font-weight: 700; }
+
+.replay-bar {
+  height: 5px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, .16);
+  overflow: hidden;
+}
+.replay-bar i {
+  display: block;
+  height: 100%;
+  width: 0;
+  border-radius: 999px;
+  background: linear-gradient(90deg, #ffd76e, var(--brand));
+}
+
+.replay-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+  margin-top: 9px;
+}
+.replay-actions .btn { padding: 7px 10px; font-size: 12.5px; }
+
+.replay-note {
+  margin: 7px 1px 0;
+  font-size: 11.5px;
+  line-height: 1.5;
+  color: rgba(255, 255, 255, .72);
+  overflow-wrap: anywhere;
+}
+
+/* 榜单每行右边的 ▶：想看这局到底怎么打的，点它。
+   有回放的行才有这个按钮 —— 没有回放的行根本不进榜。 */
+.board-play {
+  flex: 0 0 auto;
+  width: 30px;
+  height: 30px;
+  padding: 0;
+  border: 1px solid rgba(140, 96, 56, .18);
+  border-radius: 50%;
+  background: #fff;
+  color: var(--brand);
+  font-size: 11px;
+  line-height: 1;
+  cursor: pointer;
+  box-shadow: 0 2px 6px rgba(140, 96, 56, .14);
+  transition: transform .12s ease, box-shadow .12s ease;
+}
+.board-play:hover { transform: scale(1.1); box-shadow: 0 5px 12px rgba(140, 96, 56, .22); }
+.board-play:active { transform: scale(.96); }
+
+/* 没通过校验的那行：▶ 反而做得更显眼 —— 越可疑，越该让人点进去亲眼看 */
+.board-row.is-fake .board-play {
+  color: #fff;
+  border-color: transparent;
+  background: var(--brand);
+  box-shadow: 0 4px 12px rgba(224, 69, 90, .45);
+}
+
+/* 一行里塞得下就别换行（窄屏上 5 个按钮会挤爆） */
+@media (max-width: 520px) {
+  .replay-actions .btn { flex: 1 1 auto; }
+}
+
 /* ---------------- 排行榜弹窗 ---------------- */
 
 .modal {
@@ -687,6 +823,43 @@ body {
   outline: 2px solid var(--brand);
   outline-offset: -2px;
 }
+
+/* 顶部的「正在重跑验证」提示条 */
+.board-checking {
+  margin: 0 2px 8px;
+  padding: 7px 10px;
+  border-radius: 10px;
+  font-size: 12px;
+  text-align: center;
+  color: var(--ink-soft);
+  background: rgba(255, 245, 220, .85);
+  animation: board-pulse 1.4s ease-in-out infinite;
+}
+@keyframes board-pulse { 50% { opacity: .55; } }
+@media (prefers-reduced-motion: reduce) { .board-checking { animation: none; } }
+
+/* 验证状态：⏳ 待验证 / ✅ 分数复现成功 / ❌ 跑不出来 */
+.board-verify {
+  flex: 0 0 auto;
+  font-size: 13px;
+  line-height: 1;
+}
+.board-verify.is-ok   { filter: none; }
+.board-verify.is-bad  { filter: none; }
+.board-verify.is-pending { opacity: .55; }
+
+/* 没验出来的成绩：压暗 + 划掉，明确「这个数不算」 */
+.board-row.is-fake {
+  background: #f4f2ef;
+  box-shadow: none;
+}
+.board-row.is-fake .board-name,
+.board-row.is-fake .board-score {
+  text-decoration: line-through;
+  color: var(--ink-soft);
+}
+.board-row.is-fake .board-score { font-weight: 600; }
+.board-row.is-fake .board-rank { opacity: .5; }
 
 .modal-foot {
   display: flex;

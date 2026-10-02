@@ -5,82 +5,40 @@
  *  物理：PBD（位置约束求解）—— 3 个子步 × 6 次迭代，
  *        静止堆叠稳定，不抖动。
  *  玩法：相同水果接触即合成高一级水果；顶到警戒线超时判负。
+ *
+ *  分工：模拟（物理 / 合成 / 计分 / 判负 / 随机）全在 sim.js，
+ *        这个文件只负责渲染、音效、粒子和输入。
+ *        这样「种子 + 每次投放」就能把一局原样重跑一遍，
+ *        排行榜靠这个证明分数（见 leaderboard.js）。
  * ============================================================ */
 (function () {
   'use strict';
 
   /* ---------------------------------------------------------
-   *  常量
+   *  模拟核心 sim.js
+   *  物理、合成、计分、判负、投放节奏、出水果的随机，全在那一边；
+   *  这边只剩画图、播声音、收输入。
+   *  常量也从 sim 拿，避免两边各写一份、改了一边忘另一边。
    * ------------------------------------------------------- */
+  const S = window.SUIKA_SIM;
 
-  const W = 420;             // 逻辑宽度
-  const H = 700;             // 逻辑高度
-  const WALL = 10;           // 左右墙厚
-  const DROP_Y = 74;         // 待投放水果的高度
-  const DANGER_Y = 142;      // 警戒线
+  const W = S.W;                  // 逻辑宽度
+  const H = S.H;                  // 逻辑高度
+  const WALL = S.WALL;            // 左右墙厚
+  const DROP_Y = S.DROP_Y;        // 待投放水果的高度
+  const DANGER_Y = S.DANGER_Y;    // 警戒线
+  const MAX_TIER = S.MAX_TIER;    // 最大那只（神奶蛙）的索引
+  const ASSET_FILL = S.ASSET_FILL;// 贴图里主体占画布长边的比例，与生成脚本保持一致
+  const FRUITS = S.FRUITS;
+  /* 玩法数值也从 sim 拿：加分、发复活币、清场定格全发生在那一边，
+     两边各写一份的话改了一边忘另一边，回放就对不上了。 */
+  const MAX_BONUS = S.MAX_BONUS;     // 两只神奶蛙相撞的奖励分（自检要读）
+  const REVIVE_STEP = S.REVIVE_STEP; // 每累计多少分发一枚复活币
 
-  const GRAVITY   = 2600;    // px/s²
-  const SUBSTEPS  = 3;       // 每帧物理子步
-  const ITER      = 6;       // 每个子步的约束迭代次数
-  const DROP_MS   = 360;     // 两次投放的最小间隔
-  const OVER_LIMIT = 1.5;    // 越线持续多少秒判负
-  const REST_SPEED = 140;    // 线上方且速度低于它才算“卡住”（被弹飞路过的不算）
-  const REST_SPEED2 = REST_SPEED * REST_SPEED;
-
-  const MAX_TIER  = 10;      // 最大那只（神奶蛙）的索引
-  const MAX_BONUS = 500;     // 两只神奶蛙相撞的奖励分
-                             // （原来是 100 —— 合出全游戏最难的东西只给 100 分，太寒酸；
-                             //  而且它同时清掉两块最大的水果、相当于救一条命，值这个价）
-  const MAX_MERGE_GIVES_REVIVE = true;  // 两只神奶蛙一起炸掉时，额外送一枚复活币
-  const FREEZE_MS = 130;     // 清场时的定格，让这一下有重量
-  const REVIVE_STEP = 2000;  // 每累计多少分，发一枚复活币
-  const MERGE_PAD = 0.8;     // 合成判定的接触容差（px）
-
-  /* —— Q 弹手感 —— */
-  const RESTITUTION      = 0.38;  // 球与球之间的弹性
-  const WALL_RESTITUTION = 0.45;  // 撞墙 / 撞地面的弹性
-  const REST_THRESHOLD   = 55;    // 撞击速度低于此值不反弹（保证堆叠稳、不抖）
-  const FRICTION         = 0.955; // 接触时的切向摩擦（每个子步）
-  const SQUASH_DECAY     = 9;     // 挤压回弹速度
-  const SQUASH_MAX       = 0.30;  // 最大挤压变形
-
-  /* 水果链：索引越大越大
-     file : assets/fruits/ 下的贴图（由 tools/normalize_assets.py 统一生成）
-     c1/c2: 贴图缺失时的程序化水果配色
-     pc1/pc2: 粒子/汁水的颜色（取自贴图主体平均色） */
-  const ASSET_FILL = 0.92;   // 贴图里主体占画布长边的比例，与生成脚本保持一致
-
-  const FRUITS = [
-    { name: '葡萄',   r: 17,  c1: '#c084f5', c2: '#7a3fb0', line: 'rgba(74,26,120,.35)',
-      file: 'assets/fruits/01-grape.webp',     pc1: '#e9c466', pc2: '#b8903a' },
-    { name: '樱桃',   r: 23,  c1: '#ff8a99', c2: '#c62346', line: 'rgba(120,10,40,.35)',
-      file: 'assets/fruits/02-cherry.webp',    pc1: '#ffe684', pc2: '#d8b44f' },
-    { name: '橘子',   r: 31,  c1: '#ffc06a', c2: '#e0741a', line: 'rgba(140,62,0,.32)',
-      file: 'assets/fruits/03-orange.webp',    pc1: '#fdd865', pc2: '#cfa63f' },
-    { name: '柠檬',   r: 39,  c1: '#fff285', c2: '#e0b000', line: 'rgba(140,110,0,.32)',
-      file: 'assets/fruits/04-lemon.webp',     pc1: '#f6cd63', pc2: '#c9a040' },
-    { name: '猕猴桃', r: 48,  c1: '#b9e05a', c2: '#5d8c1c', line: 'rgba(60,90,10,.32)',
-      file: 'assets/fruits/05-kiwi.webp',      pc1: '#c4a559', pc2: '#94793c' },
-    { name: '番茄',   r: 58,  c1: '#ff8a66', c2: '#c62f28', line: 'rgba(120,20,10,.32)',
-      file: 'assets/fruits/06-tomato.webp',    pc1: '#fbd75a', pc2: '#cba63c' },
-    { name: '桃子',   r: 69,  c1: '#ffd0d0', c2: '#ea7f93', line: 'rgba(160,60,80,.3)',
-      file: 'assets/fruits/07-peach.webp',     pc1: '#f7c45a', pc2: '#c99a3e' },
-    { name: '菠萝',   r: 81,  c1: '#ffe07a', c2: '#c88a12', line: 'rgba(130,80,0,.32)',
-      file: 'assets/fruits/08-pineapple.webp', pc1: '#ffd37b', pc2: '#d1a252' },
-    { name: '椰子',   r: 94,  c1: '#f0e2c6', c2: '#9b7b4f', line: 'rgba(90,64,32,.35)',
-      file: 'assets/fruits/09-coconut.webp',   pc1: '#ffd771', pc2: '#d3a94e' },
-    { name: '半奶蛙', r: 108, c1: '#ff9d78', c2: '#c23a2c', line: 'rgba(120,24,16,.32)',
-      file: 'assets/fruits/10-halfmelon.webp', pc1: '#ccab68', pc2: '#9c8047' },
-    { name: '神奶蛙', r: 124, c1: '#7ce878', c2: '#1c8a33', line: 'rgba(12,70,24,.4)',
-      file: 'assets/fruits/11-watermelon.webp', pc1: '#eece9b', pc2: '#c0a271' }
-  ];
-
-  /* 合成出 tier 的得分（三角数） */
-  const MERGE_SCORE = [0, 1, 3, 6, 10, 15, 21, 28, 36, 45, 55];
-
-  /* 新水果的掉落权重（越小越常见） */
-  const SPAWN_TIERS = [0, 1, 2, 3, 4];
-  const SPAWN_WEIGHTS = [0.28, 0.24, 0.20, 0.16, 0.12];
+  /* 每局一个随机种子。它会跟着回放一起上传，
+     验证的人用同一个种子就能重放出完全一样的出球顺序。 */
+  function newSeed() { return (Math.random() * 0x100000000) >>> 0 || 1; }
+  const sim = S.create(newSeed());
 
   const BEST_KEY = 'danaiwa.best.v1';
   const MUTE_KEY = 'danaiwa.mute.v1';
@@ -119,29 +77,6 @@
 
   const clamp = (v, lo, hi) => (v < lo ? lo : v > hi ? hi : v);
   const rand  = (a, b) => a + Math.random() * (b - a);
-
-  /* 「下一个」是否允许和当前这颗相同。
-     允许的话有约 22% 概率两边显示同一张图，看起来像“下一个显示的是当前这个”，
-     所以默认避开；想恢复成完全随机就把它改成 false */
-  const AVOID_REPEAT = true;
-
-  function rollSpawnTier() {
-    let r = Math.random(), acc = 0;
-    for (let i = 0; i < SPAWN_TIERS.length; i++) {
-      acc += SPAWN_WEIGHTS[i];
-      if (r <= acc) return SPAWN_TIERS[i];
-    }
-    return SPAWN_TIERS[0];
-  }
-
-  function pickSpawnTier(avoid) {
-    if (!AVOID_REPEAT || avoid === undefined) return rollSpawnTier();
-    for (let i = 0; i < 6; i++) {
-      const t = rollSpawnTier();
-      if (t !== avoid) return t;
-    }
-    return rollSpawnTier();     // 兜底：万一连撞 6 次就认了
-  }
 
   /* ---------------------------------------------------------
    *  音效（WebAudio，无外部资源）
@@ -220,356 +155,39 @@
    *  游戏状态
    * ------------------------------------------------------- */
 
-  const state = {
-    balls: [],
-    particles: [],
-    floats: [],
-    score: 0,
-    best: Number(localStorage.getItem(BEST_KEY) || 0),
-    pending: 0,
-    next: 0,
-    ready: true,
-    cooldown: 0,
-    aimX: W / 2,
-    over: false,
-    flash: 0,
-    revives: 0,        // 本局还剩几枚复活币（重开清零）
-    reviveGiven: 0,    // 本局已经发放过几次（用来判断跨过新的 2000 分）
-    freeze: 0          // 命中定格剩余秒数
-  };
+  /* 模拟状态是 sim 的（balls/score/tick/inputs/...），
+     下面这几个只跟画面有关的字段挂在同一个对象上方便绘制 ——
+     它们不进回放，replay() 只取 seed / end / score / inputs。
+
+     `state` 是 let 而不是 const：看回放的时候它会指向**另一个**模拟实例，
+     你手上这一局原样冻在 sim.state 里，退出回放再切回来。
+     平时它恒等于 sim.state（同一个对象），所以老测试拿 __DNW__.state 不受影响。 */
+  let state = sim.state;
+  state.best = Number(localStorage.getItem(BEST_KEY) || 0);
+  state.particles = [];
+  state.floats = [];
+  state.flash = 0;
+
+  /* 'game' 正常玩；'play' 正在看回放 —— 输入全部让路，
+     update() 只推进回放那一份模拟，你这一局一帧都不动。 */
+  let mode = 'game';
+  let player = null;          // Sim.makePlayer(...) 的句柄
+  let playMeta = null;        // { source, index, title, claimed, status, reason }
+  let playAcc = 0;            // 播放用的时间累加器
+  let playSpeed = 1;          // 1 / 2 / 4
+  let wasOverlay = false;     // 进回放前结束遮罩是不是开着
+  let wasModal = false;       // 进回放前排行榜弹窗是不是开着
+
+  /* 碰撞形状、刚体构造也都在 sim.js（贴图轮廓数据照旧来自 parts.js） */
+  const shapeOf = sim.shapeOf;
+  const makeBall = sim.makeBall;
 
   /* ---------------------------------------------------------
-   *  碰撞形状（按图片轮廓生成，不是圆形）
-   *  assets/fruits/parts.js 由 tools/build_parts.py 从贴图的 alpha 轮廓算出：
-   *  parts = [[ox, oy, s], ...] 单位是「以 r 为 1」，rb = 碰撞包围圆半径。
-   *  没有数据时退化成单个半径 r 的圆，和老版本行为一致。
+   *  物理 & 合成：全在 sim.js
+   *  game.js 这边一点都不改模拟状态 —— 分数完全由 sim 决定，
+   *  所以「种子 + 投放记录」就能把一局原样重跑出来。这里只留个句柄给老测试用。
    * ------------------------------------------------------- */
-
-  const SHAPES = (typeof window !== 'undefined' && window.SUIKA_PARTS) || [];
-  const UNIT_SHAPE = { rb: 1, parts: [[0, 0, 1]] };
-
-  function shapeOf(tier) {
-    const s = SHAPES[tier];
-    if (s && s.parts && s.parts.length) return s;
-    return UNIT_SHAPE;
-  }
-
-  /* 把局部小圆换算到世界坐标（跟着刚体一起旋转平移） */
-  function syncParts(b) {
-    const c = Math.cos(b.angle), s = Math.sin(b.angle);
-    const parts = b.parts, r = b.r;
-    const wx = b.wx, wy = b.wy, ws = b.ws;
-    for (let i = 0; i < parts.length; i++) {
-      const p = parts[i];
-      const ox = p[0] * r, oy = p[1] * r;
-      wx[i] = b.x + ox * c - oy * s;
-      wy[i] = b.y + ox * s + oy * c;
-      ws[i] = p[2] * r;
-    }
-  }
-
-  function makeBall(x, y, tier, vx, vy) {
-    const r = FRUITS[tier].r;
-    const m = r * r;
-    const sh = shapeOf(tier);
-    const n = sh.parts.length;
-    const ball = {
-      x, y, vx: vx || 0, vy: vy || 0,
-      px: x, py: y,
-      r, tier, angle: 0,
-      mass: m, invMass: 1 / m,
-      bornAt: performance.now(),
-      overTime: 0,
-      landed: false,
-      dead: false,
-      contacts: 0,
-      pvx: 0, pvy: 0,          // 本子步求解前的速度（用于弹性冲量）
-      sq: 0, sqA: 0,           // 挤压变形量 / 变形轴角度
-      parts: sh.parts,
-      rb: sh.rb * r,           // 包围圆半径（粗筛用）
-      wx: new Float32Array(n), // 世界坐标下的子圆
-      wy: new Float32Array(n),
-      ws: new Float32Array(n)
-    };
-    syncParts(ball);
-    return ball;
-  }
-
-  /* ---------------------------------------------------------
-   *  物理
-   * ------------------------------------------------------- */
-
-  function stepPhysics(dt) {
-    const balls = state.balls;
-    const merges = [];
-    const contacts = [];      // 本子步的接触列表，用于弹性冲量
-
-    /* --- 积分 --- */
-    for (let i = 0; i < balls.length; i++) {
-      const b = balls[i];
-      b.px = b.x;
-      b.py = b.y;
-      b.vy += GRAVITY * dt;
-      b.pvx = b.vx;           // 求解前速度：弹性冲量用它来算，避免被约束“吃掉”
-      b.pvy = b.vy;
-      b.x += b.vx * dt;
-      b.y += b.vy * dt;
-      b.contacts = 0;
-      syncParts(b);
-    }
-
-    /* --- 约束求解 --- */
-    for (let it = 0; it < ITER; it++) {
-
-      /* 墙 & 地面：每个子圆各自贴墙，推力累加到刚体中心上（一次到位） */
-      for (let i = 0; i < balls.length; i++) {
-        const b = balls[i];
-        if (b.dead) continue;
-        let pushL = 0, pushR = 0, pushFloor = 0, pushCeil = 0;
-        const n = b.parts.length;
-        for (let k = 0; k < n; k++) {
-          const x = b.wx[k], y = b.wy[k], rr = b.ws[k];
-          const l = WALL - (x - rr);
-          if (l > pushL) pushL = l;
-          const rgt = (x + rr) - (W - WALL);
-          if (rgt > pushR) pushR = rgt;
-          const dn = (y + rr) - (H - WALL);
-          if (dn > pushFloor) pushFloor = dn;
-          const up = -(y - rr);
-          if (up > pushCeil) pushCeil = up;
-        }
-        if (pushL || pushR || pushFloor || pushCeil) {
-          b.x += pushL - pushR;
-          b.y += pushCeil - pushFloor;
-          b.contacts++;
-          if (it === 0) {
-            if (pushL)     contacts.push({ ball: b, nx: 1,  ny: 0 });
-            if (pushR)     contacts.push({ ball: b, nx: -1, ny: 0 });
-            if (pushFloor) contacts.push({ ball: b, nx: 0,  ny: -1 });
-            if (pushCeil)  contacts.push({ ball: b, nx: 0,  ny: 1 });
-          }
-          syncParts(b);
-        }
-      }
-
-      /* 球球：子圆两两求交，取“最接近/最深”的那一对做修正 */
-      for (let i = 0; i < balls.length; i++) {
-        const a = balls[i];
-        if (a.dead) continue;
-        for (let j = i + 1; j < balls.length; j++) {
-          const b = balls[j];
-          if (b.dead || a.dead) continue;
-
-          /* 包围圆粗筛 */
-          const cdx = b.x - a.x, cdy = b.y - a.y;
-          const rbSum = a.rb + b.rb;
-          if (cdx * cdx + cdy * cdy >= rbSum * rbSum) continue;
-
-          const pa = a.parts.length, pb = b.parts.length;
-          const brb = b.rb, arb = a.rb;
-          let minGap = 1e9, bnx = 0, bny = 0;
-
-          for (let m = 0; m < pa; m++) {
-            const ax = a.wx[m], ay = a.wy[m], ar = a.ws[m];
-            /* 小圆离对方中心太远就整组跳过 */
-            const ddx = b.x - ax, ddy = b.y - ay;
-            const far = brb + ar;
-            if (ddx * ddx + ddy * ddy >= far * far) continue;
-
-            for (let k = 0; k < pb; k++) {
-              const bx = b.wx[k], by = b.wy[k], br = b.ws[k];
-              const dx = bx - ax, dy = by - ay;
-              const sum = ar + br;
-              const d2 = dx * dx + dy * dy;
-              if (d2 >= sum * sum) continue;
-              const d = Math.sqrt(d2);
-              const gap = d - sum;
-              if (gap < minGap) {
-                minGap = gap;
-                if (d < 1e-4) { bnx = 1; bny = 0; }
-                else { bnx = dx / d; bny = dy / d; }
-              }
-            }
-          }
-
-          if (minGap > MERGE_PAD || minGap === 1e9) continue;
-
-          if (a.tier === b.tier && it === 0) {
-            a.dead = true;
-            b.dead = true;
-            merges.push([a, b]);
-            continue;
-          }
-
-          if (minGap >= 0) continue;            // 只是挨着，不用推开
-          if (it === 0) contacts.push({ a: a, b: b, nx: bnx, ny: bny });
-          const corr = Math.min(-minGap - 0.05, 4) * 0.9;
-          if (corr <= 0) continue;
-          const invSum = a.invMass + b.invMass;
-          const wa = a.invMass / invSum;
-          const wb = b.invMass / invSum;
-
-          a.x -= bnx * corr * wa;  a.y -= bny * corr * wa;
-          b.x += bnx * corr * wb;  b.y += bny * corr * wb;
-
-          a.contacts++;
-          b.contacts++;
-          syncParts(a);
-          syncParts(b);
-        }
-      }
-    }
-
-    /* --- 收尾墙约束：球球分离可能把水果顶出墙外，最后再夹一次 --- */
-    for (let i = 0; i < balls.length; i++) {
-      const b = balls[i];
-      if (b.dead) continue;
-      let pushL = 0, pushR = 0, pushFloor = 0, pushCeil = 0;
-      for (let k = 0; k < b.parts.length; k++) {
-        const x = b.wx[k], y = b.wy[k], rr = b.ws[k];
-        const l = WALL - (x - rr);         if (l > pushL) pushL = l;
-        const rgt = (x + rr) - (W - WALL); if (rgt > pushR) pushR = rgt;
-        const dn = (y + rr) - (H - WALL);  if (dn > pushFloor) pushFloor = dn;
-        const up = -(y - rr);              if (up > pushCeil) pushCeil = up;
-      }
-      if (pushL || pushR || pushFloor || pushCeil) {
-        b.x += pushL - pushR;
-        b.y += pushCeil - pushFloor;
-        b.contacts++;
-        syncParts(b);
-      }
-    }
-
-    /* --- 由位置差反推速度（PBD）+ 摩擦 + 滚动 --- */
-    const invDt = 1 / dt;
-    for (let i = 0; i < balls.length; i++) {
-      const b = balls[i];
-      if (b.dead) continue;
-
-      const dx = b.x - b.px;
-      const dy = b.y - b.py;
-
-      let vx = dx * invDt;
-      let vy = dy * invDt;
-
-      if (b.contacts > 0) vx *= FRICTION;   // 接触时的切向摩擦
-      if (b.sq > 0) b.sq = Math.max(0, b.sq - b.sq * SQUASH_DECAY * dt);
-
-      b.vx = vx;
-      b.vy = vy;
-      b.angle += dx / b.r * 0.85;           // 视觉滚动
-
-      if (!b.landed) {
-        if (b.contacts > 0 || performance.now() - b.bornAt > 900) b.landed = true;
-      }
-    }
-
-    /* --- 弹性冲量 ---
-       位置约束已经把法向速度吃掉了一部分，这里直接把法向相对速度“改写”成
-       e × 碰撞前速度，这样回弹量只由 e 决定，不受子步/迭代次数影响。
-       撞击速度低于阈值时完全不弹，保证堆叠静止时不抖。 */
-    for (let k = 0; k < contacts.length; k++) {
-      const ct = contacts[k];
-
-      if (ct.ball) {
-        /* 撞墙 / 撞地面 */
-        const b = ct.ball;
-        if (b.dead) continue;
-        const vnPre = b.pvx * ct.nx + b.pvy * ct.ny;      // <0 表示还在往墙里钻
-        if (vnPre < -REST_THRESHOLD) {
-          const vnPost = b.vx * ct.nx + b.vy * ct.ny;
-          const target = -WALL_RESTITUTION * vnPre;       // 期望的分离速度
-          const j = target - vnPost;
-          if (j > 0) {
-            b.vx += j * ct.nx;
-            b.vy += j * ct.ny;
-            squash(b, ct.nx, ct.ny, -vnPre);
-          }
-        }
-      } else {
-        /* 球与球 */
-        const a = ct.a, b = ct.b;
-        if (a.dead || b.dead) continue;
-        const nx = ct.nx, ny = ct.ny;                     // a → b
-        const vnPre = (a.pvx - b.pvx) * nx + (a.pvy - b.pvy) * ny;   // >0 表示相互靠近
-        if (vnPre > REST_THRESHOLD) {
-          const vnPost = (a.vx - b.vx) * nx + (a.vy - b.vy) * ny;
-          const target = -RESTITUTION * vnPre;
-          const j = (vnPost - target) / (a.invMass + b.invMass);
-          if (j > 0) {
-            a.vx -= j * a.invMass * nx;  a.vy -= j * a.invMass * ny;
-            b.vx += j * b.invMass * nx;  b.vy += j * b.invMass * ny;
-            squash(a, -nx, -ny, vnPre);
-            squash(b, nx, ny, vnPre);
-          }
-        }
-      }
-    }
-
-    /* --- 处理合成 --- */
-    if (merges.length) processMerges(merges);
-  }
-
-  /* 撞击挤压：沿撞击法线压扁、垂直方向拉伸，做出果冻感 */
-  function squash(b, nx, ny, speed) {
-    const k = Math.min(SQUASH_MAX, speed / 1500);
-    if (k <= b.sq) return;
-    b.sq = k;
-    b.sqA = Math.atan2(ny, nx);
-  }
-
-  function processMerges(merges) {
-    for (let k = 0; k < merges.length; k++) {
-      const a = merges[k][0];
-      const b = merges[k][1];
-      const mx = (a.x + b.x) * 0.5;
-      const my = (a.y + b.y) * 0.5;
-      const tier = a.tier;
-
-      if (tier >= MAX_TIER) {
-        /* 两只神奶蛙 → 一起炸掉，拿一大笔奖励分（外加一枚复活币）。
-           注意：它同时清掉了两块最大的水果，是后期唯一的泄压阀，不能取消。
-           分数的飘字不用 addScore 那个普通的，下面单独给了「大字 +500」。 */
-        addScore(MAX_BONUS);
-        burst(mx, my, MAX_TIER, 90, 560);
-        burst(mx, my, MAX_TIER - 2, 42, 340);
-        Sound.bonus();
-        haptic(70);
-        state.flash = 1.4;                    // 比普通合成更亮的全屏闪
-        state.freeze = FREEZE_MS / 1000;      // 定格一下，让这一下有重量
-        state.floats.push({ x: mx, y: my - 74, text: '两个神奶蛙 💥', life: 1.6 });
-        state.floats.push({ x: mx, y: my - 16, text: '+' + MAX_BONUS, life: 2.2, big: true });
-        if (MAX_MERGE_GIVES_REVIVE) {
-          state.revives++;
-          paintRevives(true);
-        }
-      } else {
-        const nt = tier + 1;
-        const nb = makeBall(mx, my, nt, (a.vx + b.vx) * 0.5, (a.vy + b.vy) * 0.5 - 60);
-        /* 贴着墙合成时，新水果更大，先夹回场地内，避免瞬间穿墙 */
-        nb.x = clamp(nb.x, WALL + nb.r, W - WALL - nb.r);
-        nb.y = Math.min(nb.y, H - WALL - nb.r);
-        nb.px = nb.x;
-        nb.py = nb.y;
-        nb.landed = true;
-        nb.popAt = performance.now();
-        state.balls.push(nb);
-
-        addScore(MERGE_SCORE[nt], mx, my, '+' + MERGE_SCORE[nt]);
-        burst(mx, my, nt, 8 + nt * 2, 140 + nt * 22);
-        Sound.merge(nt);
-        haptic(6 + nt);
-        if (nt === MAX_TIER) state.flash = 1;
-      }
-    }
-
-    /* 移除被合成的球 */
-    const alive = [];
-    for (let i = 0; i < state.balls.length; i++) {
-      if (!state.balls[i].dead) alive.push(state.balls[i]);
-    }
-    state.balls = alive;
-  }
+  const stepPhysics = sim.stepPhysics;
 
   /* ---------------------------------------------------------
    *  特效 & 计分
@@ -596,11 +214,12 @@
   }
 
   /* 复活币胶囊：有币才显示，跨过 2000 分时弹一下。
-     注意 0 枚时也要把文字刷成 ×0 —— 否则下次显示出来的是上一次的旧数字。 */
+     注意 0 枚时也要把文字刷成 ×0 —— 否则下次显示出来的是上一次的旧数字。
+     回放时不显示：那是录像里那个人的币，不是你的。 */
   function paintRevives(pop) {
     if (!reviveBadge) return;
     if (reviveCountEl) reviveCountEl.textContent = '×' + state.revives;
-    if (state.revives > 0) {
+    if (state.revives > 0 && mode === 'game') {
       reviveBadge.hidden = false;
       if (pop) {
         reviveBadge.classList.remove('pop');
@@ -613,33 +232,42 @@
     }
   }
 
-  /* 每累计 REVIVE_STEP 分，发一枚复活币 */
-  function grantRevives() {
-    let got = 0;
-    while (state.reviveGiven < Math.floor(state.score / REVIVE_STEP)) {
-      state.reviveGiven++;
-      state.revives++;
-      got++;
-    }
-    if (!got) return;
+  /* 「+1 复活币」那一行大字飘分 + 音效。
+     模拟那边只负责 state.revives++，观感全在这一层。 */
+  function paintReviveGrant() {
     paintRevives(true);
     state.floats.push({ x: W / 2, y: 210, text: '+1 复活币', life: 1.4, big: true });
     Sound.merge(6);
   }
 
-  function addScore(n, x, y, text) {
-    state.score += n;
-    if (state.score > state.best) {
-      state.best = state.score;
-      localStorage.setItem(BEST_KEY, String(state.best));
-      bestEl.textContent = state.best;
+  /* 分数本身是 sim 加的（processMerges 里就已经 +n 了），
+     这一边只负责把结果同步到界面上 —— 再加一次就会翻倍，
+     而且那样 game.js 也就成了「改分数的地方」，回放就复现不了了。 */
+  function paintScore(n, x, y, text) {
+    /* 看回放时只飘字：不碰最高分、不改面板数字 ——
+       看一局录像没道理把你自己的最高分抬上去，退出来还得改回去。 */
+    if (mode !== 'play') {
+      if (state.score > state.best) {
+        state.best = state.score;
+        localStorage.setItem(BEST_KEY, String(state.best));
+        bestEl.textContent = state.best;
+      }
+      scoreEl.textContent = state.score;
+      bump(scoreEl);
     }
-    scoreEl.textContent = state.score;
-    bump(scoreEl);
     if (x !== undefined) {
       state.floats.push({ x, y, text: text || ('+' + n), life: 1 });
     }
-    grantRevives();
+  }
+
+  /* 加 n 分：分数交给 sim（加分和发复活币都在那一边，回放要复现），
+     再把界面刷出来。正常流程是 sim 自己发事件、pumpEvents 走 paintScore ——
+     只有控制台和玩法自检会直接调这个，别在游戏流程里调，会加两次。 */
+  function addScore(n, x, y, text) {
+    sim.addScore(n);
+    pumpEvents();          // 把刚才那次发币的事件当场吃掉（徽章 / 飘字 / 音效）
+    paintScore(n, x, y, text);
+    return state.score;
   }
 
   function bump(el) {
@@ -652,72 +280,69 @@
    *  投放 & 控制
    * ------------------------------------------------------- */
 
-  function aimLimit(tier) {
-    const r = FRUITS[tier].r * shapeOf(tier).rb;   // 用碰撞外形而不是圆形
-    return [WALL + r + 0.5, W - WALL - r - 0.5];
-  }
+  function aimLimit(tier) { return sim.aimLimit(tier); }
 
-  function moveAim(x) {
-    const [lo, hi] = aimLimit(state.pending);
-    state.aimX = clamp(x, lo, hi);
-  }
+  function moveAim(x) { sim.moveAim(x); }
 
   function tryDrop() {
-    if (state.over || !state.ready) return;
-    const tier = state.pending;
-    const [lo, hi] = aimLimit(tier);
-    const x = clamp(state.aimX, lo, hi);
-
-    const ball = makeBall(x, DROP_Y, tier, 0, 130);
-    state.balls.push(ball);
-
-    state.ready = false;
-    state.cooldown = DROP_MS / 1000;
-    state.pending = state.next;
-    state.next = pickSpawnTier(state.pending);   // 和当前这颗不一样
-    Sound.drop();
-    drawNext();
-    if (state.balls.length > 90) state.balls = state.balls.filter(b => !b.dead);
+    if (!sim.tryDrop()) return;      // 冷却中 / 已结束，和以前一样什么都不做
+    pumpEvents();                    // 投放音效、刷新「下一个」当帧就出
   }
 
   /* ---------------------------------------------------------
-   *  判负
+   *  事件分发
+   *  sim 只把「发生了什么」写进队列（合成 / 奖励 / 发币 / 复活 / 判负），
+   *  音效、粒子、飘分、结算弹窗这些只跟画面有关的东西留在这一层。
    * ------------------------------------------------------- */
-
-  function checkGameOver(dt) {
-    let danger = false;
-    for (let i = 0; i < state.balls.length; i++) {
-      const b = state.balls[i];
-      if (b.dead || !b.landed) continue;
-      const top = b.y - b.r;
-
-      if (top < DANGER_Y) {
-        danger = true;                     // 只要线上方有东西，虚线就闪红
-        /* 只有「卡在线上方且基本停住」才计时：
-           被弹起来、正在飞过线的不算，免得误判 */
-        if (b.vx * b.vx + b.vy * b.vy < REST_SPEED2) {
-          b.overTime += dt;
-          if (b.overTime > OVER_LIMIT) { gameOver(); return; }
-        } else {
-          b.overTime = Math.max(0, b.overTime - dt * 2);
-        }
-      } else {
-        /* 回到线下方 → 按 2 倍速倒扣，所以长时间待在线上方才会攒起来 */
-        b.overTime = Math.max(0, b.overTime - dt * 2);
-        if (b.overTime > 0) danger = true;
+  function pumpEvents() {
+    const evs = sim.drainEvents();
+    for (let i = 0; i < evs.length; i++) {
+      const ev = evs[i];
+      if (ev.type === 'drop') {
+        Sound.drop();
+        drawNext();
+      } else if (ev.type === 'merge') {
+        if (ev.ball) ev.ball.popAt = performance.now();   // 弹出动画用真实时间
+        paintScore(ev.score, ev.x, ev.y, '+' + ev.score);
+        burst(ev.x, ev.y, ev.tier, 8 + ev.tier * 2, 140 + ev.tier * 22);
+        Sound.merge(ev.tier);
+        haptic(6 + ev.tier);
+        if (ev.tier === MAX_TIER) state.flash = 1;
+      } else if (ev.type === 'bonus') {
+        /* 两只神奶蛙一起炸掉：大字飘分 + 更猛的爆裂 + 更亮的闪。
+           这里刻意**不给 addScore 传坐标** —— 普通飘字不要，
+           下面单独给「大字 +500」和一行说明。 */
+        paintScore(ev.score);
+        burst(ev.x, ev.y, ev.tier, 90, 560);
+        burst(ev.x, ev.y, Math.max(0, ev.tier - 2), 42, 340);
+        Sound.bonus();
+        haptic(70);
+        state.flash = 1.4;                    // 比普通合成更亮的全屏闪
+        state.floats.push({ x: ev.x, y: ev.y - 74, text: '两个神奶蛙 💥', life: 1.6 });
+        state.floats.push({ x: ev.x, y: ev.y - 16, text: '+' + ev.score, life: 2.2, big: true });
+        if (ev.revive) paintRevives(true);    // 顺手送的那一枚
+      } else if (ev.type === 'reviveGrant') {
+        if (mode === 'game') paintReviveGrant();
+      } else if (ev.type === 'revive') {
+        /* 回放里没人点按钮，闪一下让观众知道这儿救回来了 */
+        if (mode === 'play') state.flash = 0.6;
+      } else if (ev.type === 'over') {
+        /* 回放里判负只意味着「播完了」：绝不能弹结算框，
+           更不能走 DanaiwaBoard.onGameOver —— 那会把这份回放再提交一次。 */
+        if (mode === 'game') gameOver();
       }
     }
-    state.danger = danger;
   }
 
-  /* 正式结算：弹结算窗 + 把成绩交给排行榜 */
+  /* 正式结算：弹结算窗 + 把成绩（连整局回放）交给排行榜 */
   function settle() {
     if (revivePromptEl) revivePromptEl.hidden = true;
     if (overPanelEl) overPanelEl.hidden = false;
     if (overlayEl) overlayEl.classList.add('show');
-    /* 交给排行榜模块（没加载也不影响） */
+    /* 交给排行榜模块（没加载也不影响）：除了分数，把整局回放一起交出去 ——
+       验证的人拿它原样重跑一遍，分数对得上才算数。 */
     if (window.DanaiwaBoard && window.DanaiwaBoard.onGameOver) {
-      window.DanaiwaBoard.onGameOver(state.score);
+      window.DanaiwaBoard.onGameOver(state.score, sim.replay());
     }
   }
 
@@ -739,33 +364,11 @@
     settle();
   }
 
-  /* 复活：消除最顶上那颗，再把仍压在警戒线以上的清掉（只清一颗的话会立刻再输），
-     然后接着玩。返回 false 表示当前不能复活。 */
+  /* 复活。规则全在 sim 里 —— 清哪几颗、扣几次、解除判负、把这个 tick
+     记进回放，全都必须和重放时跑出来的完全一致；这一层只管把界面收起来。
+     返回 false 表示当前不能复活（没次数 / 没判负）。 */
   function revive() {
-    if (!state.over || state.revives <= 0) return false;
-
-    /* 1) 找最顶上的：按「上边缘」比，最小的最靠上 */
-    let top = -1;
-    let topEdge = Infinity;
-    for (let i = 0; i < state.balls.length; i++) {
-      const b = state.balls[i];
-      if (b.dead) continue;
-      const edge = b.y - b.r;
-      if (edge < topEdge) { topEdge = edge; top = i; }
-    }
-    if (top >= 0) state.balls.splice(top, 1);
-
-    /* 2) 还压在警戒线以上的，一并清掉 */
-    state.balls = state.balls.filter((b) => !b.dead && (b.y - b.r) >= DANGER_Y + 6);
-
-    /* 越线计时清零，给玩家一个反应窗口 */
-    for (let i = 0; i < state.balls.length; i++) state.balls[i].overTime = 0;
-
-    state.revives--;
-    state.over = false;
-    state.danger = false;
-    state.ready = true;
-    state.cooldown = 0;
+    if (!sim.revive()) return false;
     state.flash = 0.6;               // 闪一下，让玩家知道救回来了
     if (revivePromptEl) revivePromptEl.hidden = true;
     if (overlayEl) overlayEl.classList.remove('show');
@@ -775,22 +378,12 @@
   }
 
   function reset() {
-    state.balls.length = 0;
+    if (mode === 'play') return;          // 正在看回放，不许动你手上那局
     state.particles.length = 0;
     state.floats.length = 0;
-    state.score = 0;
-    state.over = false;
-    state.ready = true;
-    state.cooldown = 0;
     state.flash = 0;
-    state.danger = false;
-    state.aimX = W / 2;
-    state.revives = 0;        // 复活币只在本局有效，重开清零
-    state.reviveGiven = 0;
-    state.freeze = 0;
-    state.pending = pickSpawnTier();
-    state.next = pickSpawnTier(state.pending);
-    if (overlayEl) overlayEl.classList.remove('show');
+    sim.reset(newSeed());            // 每局换新种子，回放就是靠它把整局拉回同一个起点
+    overlayEl.classList.remove('show');
     if (revivePromptEl) revivePromptEl.hidden = true;
     if (overPanelEl) overPanelEl.hidden = false;
     paintRevives(false);
@@ -997,7 +590,7 @@
   }
 
   function drawAim() {
-    if (state.over) return;
+    if (mode !== 'game' || state.over) return;
     const tier = state.pending;
     const r = FRUITS[tier].r;
     const [lo, hi] = aimLimit(tier);
@@ -1161,21 +754,13 @@
   }
 
   function update(dt) {
-    /* 清场命中定格：世界停一下，但画面照常重绘 */
-    if (state.freeze > 0) { state.freeze = Math.max(0, state.freeze - dt); return; }
-
+    /* 看回放时这里只推进回放那一份模拟 —— 你手上这一局一帧都不动，
+       退出回放接着玩就行，不用快照也不用恢复。 */
+    if (mode === 'play') { updatePlayback(dt); return; }
     if (state.over) return;          // 结束后冻结棋盘（粒子特效仍在 render 里继续）
 
-    if (!state.ready) {
-      state.cooldown -= dt;
-      if (state.cooldown <= 0) state.ready = true;
-    }
-
-    /* 物理：子步细分，保证小水果不被穿透 */
-    const sub = dt / SUBSTEPS;
-    for (let s = 0; s < SUBSTEPS; s++) stepPhysics(sub);
-
-    checkGameOver(dt);
+    sim.update(dt);
+    pumpEvents();
     if (state.flash > 0) state.flash = Math.max(0, state.flash - dt * 2.2);
   }
 
@@ -1196,6 +781,187 @@
       ctx.fillRect(0, 0, W, H);
       ctx.restore();
     }
+
+    if (mode === 'play') paintHud();
+  }
+
+  /* ---------------------------------------------------------
+   *  回放：把一局存档一帧一帧地播出来
+   *
+   *  数据来自 leaderboard.js 的本地存档 / 榜上记录；
+   *  推进逻辑在 sim.js 的 makePlayer 里 —— 和判分用的是同一段代码，
+   *  所以「你看到的」和「验出来的」永远是同一回事。
+   *
+   *  关键点：播放用的是**另一个**模拟实例。`state` 只是个指针，
+   *  从它指向播放实例的那一刻起，你手上那一局（连同它的粒子、准星、
+   *  冷却、分数）原封不动地留在 sim.state 里，一帧都没推进 ——
+   *  退出回放切回来接着玩就行，不需要快照，也不需要恢复。
+   * ------------------------------------------------------- */
+  const hud = document.getElementById('replayHud');
+  const hudBadge = document.getElementById('replayBadge');
+  const hudTitle = document.getElementById('replayTitle');
+  const hudScore = document.getElementById('replayScore');
+  const hudClaimed = document.getElementById('replayClaimed');
+  const hudBar = document.getElementById('replayBar');
+  const hudNote = document.getElementById('replayNote');
+  const btnPause = document.getElementById('replayPause');
+  const btnSpeed = document.getElementById('replaySpeed');
+  const btnPrev = document.getElementById('replayPrev');
+  const btnNext = document.getElementById('replayNext');
+  const btnStop = document.getElementById('replayStop');
+  const btnClose = document.getElementById('replayClose');
+  const boardModalEl = document.getElementById('boardModal');
+
+  let playPaused = false;
+
+  /* 渲染层那几个字段挂到播放实例上，和正式那一局互不相干 */
+  function attachPlayFields(s) {
+    s.particles = [];
+    s.floats = [];
+    s.flash = 0;
+    s.best = state.best;
+    s.aimX = W / 2;
+    return s;
+  }
+
+  function showHud(on) { if (hud) hud.hidden = !on; }
+
+  function bindHud() {
+    if (!hud) return;
+    if (btnStop) btnStop.addEventListener('click', stopReplay);
+    if (btnClose) btnClose.addEventListener('click', stopReplay);
+    if (btnPause) btnPause.addEventListener('click', togglePause);
+    if (btnSpeed) btnSpeed.addEventListener('click', function () {
+      setPlaySpeed(playSpeed === 1 ? 2 : playSpeed === 2 ? 4 : 1);
+    });
+    if (btnPrev) btnPrev.addEventListener('click', function () { stepSave(-1); });
+    if (btnNext) btnNext.addEventListener('click', function () { stepSave(1); });
+  }
+
+  /* 开播。已经在播就直接换一局，不留黑帧。 */
+  function playReplay(record, meta) {
+    if (!record) return false;
+    let p;
+    try { p = S.makePlayer(record); } catch (e) { return false; }
+    if (!p || p.error || !p.state) return false;
+
+    if (mode !== 'play') {
+      wasOverlay = overlayEl.classList.contains('show');
+      wasModal = !!(boardModalEl && boardModalEl.classList.contains('show'));
+      overlayEl.classList.remove('show');
+      /* 复活币胶囊是「你这一局」的，看录像时先收起来，退出来再刷 */
+      if (reviveBadge) reviveBadge.hidden = true;
+      if (wasModal && window.DanaiwaBoard && window.DanaiwaBoard.close) window.DanaiwaBoard.close();
+      mode = 'play';
+      showHud(true);
+    }
+
+    attachPlayFields(p.state);
+    player = p;
+    playMeta = meta || {};
+    playAcc = 0;
+    playPaused = false;
+    state = p.state;
+    drawNext();
+    paintHud();
+    return true;
+  }
+
+  function stopReplay() {
+    if (mode !== 'play') return false;
+    mode = 'game';
+    player = null;
+    playMeta = null;
+    playPaused = false;
+    playAcc = 0;
+    state = sim.state;                 // 切回你手上这一局（一帧都没动过）
+    showHud(false);
+    scoreEl.textContent = state.score;
+    bestEl.textContent = state.best;
+    drawNext();
+    paintRevives(false);               // 复活币胶囊也切回你这一局
+    if (wasOverlay) overlayEl.classList.add('show');
+    if (wasModal && window.DanaiwaBoard && window.DanaiwaBoard.open) window.DanaiwaBoard.open();
+    wasOverlay = false;
+    wasModal = false;
+    return true;
+  }
+
+  function togglePause() {
+    if (mode !== 'play') return;
+    playPaused = !playPaused;
+    paintHud();
+  }
+
+  function setPlaySpeed(v) {
+    playSpeed = (v === 2 || v === 4) ? v : 1;
+    paintHud();
+  }
+
+  /* 存档列表里前后翻：上传页那个「◀ 上一局 / 下一局 ▶」就是它 */
+  function stepSave(d) {
+    const B = window.DanaiwaBoard;
+    if (!B || !B.saves || !B.replaySave) return;
+    const list = B.saves();
+    if (!list || !list.length) return;
+    let i = (playMeta && typeof playMeta.index === 'number') ? playMeta.index : 0;
+    i = (i + d + list.length) % list.length;
+    B.replaySave(i);
+  }
+
+  function updatePlayback(dt) {
+    if (!player) { stopReplay(); return; }
+    if (playPaused) return;
+
+    playAcc += dt * playSpeed;
+    let guard = 0;
+    while (playAcc >= FIXED && guard < 8) {
+      playAcc -= FIXED;
+      guard++;
+      if (!player.step()) { playAcc = 0; break; }   // 播完了（或这份回放本身有毛病）
+      pumpEvents();                                  // 合成音效 / 粒子 / 飘分
+    }
+    if (guard >= 8) playAcc = 0;                     // 卡了就跳过一点，别越拖越远
+    if (state.flash > 0) state.flash = Math.max(0, state.flash - dt * 2.2 * playSpeed);
+  }
+
+  function paintHud() {
+    if (!hud || mode !== 'play' || !player) return;
+    const m = playMeta || {};
+    const p = player;
+
+    if (hudBadge) {
+      hudBadge.textContent = m.status === 'ok' ? '✅ 已验证'
+        : m.status === 'bad' ? '❌ 没通过'
+          : m.status === 'pending' ? '⏳ 待验证' : '🎬 回放';
+      hudBadge.className = 'replay-badge is-' + (m.status || 'none');
+    }
+    if (hudTitle) hudTitle.textContent = m.title || '存档回放';
+    if (hudScore && hudScore.textContent !== String(p.score)) hudScore.textContent = p.score;
+    if (hudClaimed) {
+      const c = (m.claimed === undefined || m.claimed === null) ? null : Number(m.claimed);
+      hudClaimed.textContent = (c !== null && isFinite(c) && c !== p.score)
+        ? '（声称 ' + c + '）' : '';
+    }
+    if (hudBar) {
+      const pct = p.end > 0 ? Math.min(100, (p.tick / p.end) * 100) : 0;
+      hudBar.style.width = pct.toFixed(1) + '%';
+    }
+    if (btnSpeed) btnSpeed.textContent = playSpeed + '×';
+    if (btnPause) btnPause.textContent = playPaused ? '▶ 继续' : '⏸ 暂停';
+    const isSave = m.source === 'save';
+    if (btnPrev) btnPrev.hidden = !isSave;
+    if (btnNext) btnNext.hidden = !isSave;
+
+    if (hudNote) {
+      let note = p.done
+        ? (p.error ? '这份回放播不下去：' + p.error
+          : '回放结束 · ' + p.score + ' 分 · ' + p.tick + ' tick')
+        : (playPaused ? '已暂停'
+          : '播到 ' + p.tick + ' / ' + p.end + ' tick' + (playSpeed !== 1 ? '　·　' + playSpeed + '×' : ''));
+      if (m.reason) note += '　·　' + m.reason;
+      if (hudNote.textContent !== note) hudNote.textContent = note;
+    }
   }
 
   /* ---------------------------------------------------------
@@ -1212,13 +978,13 @@
   let touchAiming = false;
 
   stage.addEventListener('pointermove', (e) => {
-    if (state.over) return;
+    if (mode !== 'game' || state.over) return;
     if (e.pointerType === 'touch' && !touchAiming) return;
     moveAim(pointerToX(e.clientX));
   });
 
   stage.addEventListener('pointerdown', (e) => {
-    if (state.over) return;
+    if (mode !== 'game' || state.over) return;
     Sound.ensure();
     moveAim(pointerToX(e.clientX));
     if (e.pointerType === 'touch') {
@@ -1236,7 +1002,7 @@
     if (e.pointerType !== 'touch') return;
     if (!touchAiming) return;
     touchAiming = false;
-    if (state.over) return;
+    if (mode !== 'game' || state.over) return;
     moveAim(pointerToX(e.clientX));
     tryDrop();
   });
@@ -1255,6 +1021,16 @@
 
   window.addEventListener('keydown', (e) => {
     if (isTyping(e)) return;
+
+    /* —— 看回放的时候：Esc 退出，← → 调倍速，空格暂停，其余全让路 —— */
+    if (mode === 'play') {
+      if (e.ctrlKey || e.metaKey || e.altKey) return;    // 浏览器快捷键别拦（刷新、F12…）
+      if (e.code === 'Escape') { stopReplay(); e.preventDefault(); }
+      else if (e.code === 'ArrowLeft') { setPlaySpeed(playSpeed === 4 ? 2 : 1); e.preventDefault(); }
+      else if (e.code === 'ArrowRight') { setPlaySpeed(playSpeed === 1 ? 2 : 4); e.preventDefault(); }
+      else if (e.code === 'Space' || e.code === 'Enter') { togglePause(); e.preventDefault(); }
+      return;
+    }
 
     if (e.code === 'ArrowLeft' || e.code === 'KeyA') {
       state.aimX = clamp(state.aimX - 14, WALL, W);
@@ -1366,6 +1142,7 @@
     window.addEventListener('orientationchange', () => setTimeout(resizeCanvas, 120));
 
     paintSoundBtn();
+    bindHud();
 
     /* 越线那一屏的两个按钮 */
     if (reviveBtn) reviveBtn.addEventListener('click', revive);
@@ -1384,9 +1161,20 @@
     boot();
   }
 
-  /* 调试句柄（控制台可用）：__DNW__.state / .reset() / .drop() / .FRUITS / .render() */
-  window.__DNW__ = { state, reset, revive, settle, gameOver, tryDrop, stepPhysics, update, FRUITS,
-                     render, resizeCanvas, shapeOf, makeBall, paintRevives, addScore,
-                     MAX_BONUS, REVIVE_STEP,
-                     blurReady: () => !!blurImg };
+  /* 调试句柄（控制台可用）：__DNW__.state / .reset() / .drop() / .FRUITS / .render() /
+     __DNW__.playReplay(record, meta) / .stopReplay() —— 后两个是「重放」按钮的入口。
+     state 是 getter：看回放时它指向播放实例，退出来又指回你这一局，
+     而 `sim.state`（你那一局）从头到尾是同一个对象，测试可以直接拿。
+     revive / settle / gameOver / addScore 是玩法层的入口（复活系统自检用）。 */
+  window.__DNW__ = {
+    get state() { return state; },
+    reset, tryDrop, stepPhysics, FRUITS, render, resizeCanvas, shapeOf, makeBall, sim,
+    playReplay, stopReplay,
+    revive, settle, gameOver, askRevive, paintRevives, addScore, pumpEvents, update,
+    MAX_BONUS, REVIVE_STEP,
+    blurReady: () => !!blurImg,
+    get mode() { return mode; },
+    get player() { return player; },
+    get playSpeed() { return playSpeed; }
+  };
 })();

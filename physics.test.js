@@ -72,6 +72,8 @@ sandbox.globalThis = sandbox;
 vm.createContext(sandbox);
 vm.runInContext(fs.readFileSync(path.join(root, 'assets', 'fruits', 'parts.js'), 'utf8'),
                 sandbox, { filename: 'parts.js' });
+vm.runInContext(fs.readFileSync(path.join(root, 'sim.js'), 'utf8'),
+                sandbox, { filename: 'sim.js' });
 vm.runInContext(fs.readFileSync(path.join(root, 'game.js'), 'utf8'), sandbox, { filename: 'game.js' });
 
 const H = 700, W = 420, WALL = 10, R = [17, 23, 31, 39, 48, 58, 69, 81, 94, 108, 124];
@@ -113,7 +115,8 @@ function outOfBounds(b, floorTol) {
   const ft = floorTol === undefined ? 1.5 : floorTol;
   if (!isFinite(b.x) || !isFinite(b.y) || !isFinite(b.vx)) return 'NaN';
   const e = bounds(b);
-  if (e.maxy > H - WALL + ft) return 'floor maxy=' + e.maxy.toFixed(1);
+  if (e.maxy > H - WALL + ft) return 'floor maxy=' + e.maxy.toFixed(1) +
+    ' tier=' + b.tier + ' y=' + b.y.toFixed(1) + ' r=' + b.r + ' vy=' + b.vy.toFixed(1);
   if (e.minx < WALL - 1.5) return 'left minx=' + e.minx.toFixed(1) + ' tier=' + b.tier;
   if (e.maxx > W - WALL + 1.5) return 'right maxx=' + e.maxx.toFixed(1) + ' tier=' + b.tier;
   return '';

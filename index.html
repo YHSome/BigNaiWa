@@ -62,6 +62,7 @@
           </div>
 
           <div class="dialog-actions">
+            <button class="btn" id="replayBtn" type="button">🎬 重放存档</button>
             <button class="btn" id="boardBtn2" type="button">🏆 排行榜</button>
             <button class="btn btn-primary" id="restartBtn" type="button">再来一局</button>
             <button class="btn btn-sponsor btn-wide" id="sponsorBtn" type="button">🌶️ 可以赏作者一包辣条嘛</button>
@@ -70,6 +71,25 @@
         </div>
 
       </div>
+    </div>
+
+    <!-- ===== 回放 HUD：看本地存档 / 看榜上某一局时才出现 ===== -->
+    <div class="replay-hud" id="replayHud" hidden>
+      <div class="replay-head">
+        <span class="replay-badge is-none" id="replayBadge">🎬 回放</span>
+        <span class="replay-title" id="replayTitle">存档回放</span>
+        <button class="icon-btn" id="replayClose" type="button" aria-label="退出回放">✕</button>
+      </div>
+      <p class="replay-score"><strong id="replayScore">0</strong><span id="replayClaimed"></span></p>
+      <div class="replay-bar"><i id="replayBar"></i></div>
+      <div class="replay-actions">
+        <button class="btn btn-sm" id="replayPause" type="button">⏸ 暂停</button>
+        <button class="btn btn-sm" id="replaySpeed" type="button">1×</button>
+        <button class="btn btn-sm" id="replayPrev" type="button" hidden>◀ 上一局</button>
+        <button class="btn btn-sm" id="replayNext" type="button" hidden>下一局 ▶</button>
+        <button class="btn btn-sm btn-primary" id="replayStop" type="button">退出回放</button>
+      </div>
+      <p class="replay-note" id="replayNote"></p>
     </div>
   </section>
 
@@ -139,7 +159,7 @@
     </div>
     <div class="board-list" id="boardList"></div>
     <footer class="modal-foot">
-      <span class="board-note">只取最近 20 次提交，成绩会被后来的人挤下去</span>
+      <span class="board-note">每条成绩都会重跑一遍回放，分数跑不出来就不算数</span>
       <button class="btn" id="boardRefresh" type="button">刷新</button>
     </footer>
   </div>
@@ -168,11 +188,13 @@
 
 <!-- 碰撞形状数据（按贴图轮廓自动生成，由 tools/build_parts.py 产出） -->
 <script src="assets/fruits/parts.js"></script>
+<!-- 模拟核心（确定性，排行榜靠它重放验证），必须在 game.js 之前 -->
+<script src="sim.js"></script>
 <!-- 极模糊占位图（内联 data URL，由 tools/make_blur.py 产出）：贴图没到位时先画它 -->
 <script src="assets/fruits/blur.js"></script>
 <script src="game.js"></script>
-<!-- 排行榜 -->
-<script src="leaderboard.min.js"></script>
+<!-- 排行榜：存整局回放，读的人自己重跑一遍验证分数 -->
+<script src="leaderboard.js"></script>
 <!-- 赞助作者 -->
 <script src="sponsor.js"></script>
 </body>
