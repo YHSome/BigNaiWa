@@ -19,7 +19,7 @@ from PIL import Image, ImageFilter
 from collections import deque
 
 SRC = "src"
-OUT = os.path.join("assets", "fruits")
+OUT = os.path.join("v1", "assets", "fruits")
 SIZE = 512            # 输出画布边长
 FILL = 0.92           # 主体最长边占画布比例
 MAX_ITER = 4000

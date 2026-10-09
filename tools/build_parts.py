@@ -22,7 +22,7 @@ import os
 import numpy as np
 from PIL import Image
 
-OUT = os.path.join("assets", "fruits")
+OUT = os.path.join("v1", "assets", "fruits")
 TIERS = ["grape", "cherry", "orange", "lemon", "kiwi",
          "tomato", "peach", "pineapple", "coconut", "halfmelon", "watermelon"]
 

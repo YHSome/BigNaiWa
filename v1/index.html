@@ -1,0 +1,179 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<meta name="theme-color" content="#fff3e0">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="合成大奶娃">
+<meta name="description" content="合成大奶娃 · 纯前端小游戏：拖动瞄准、松手投放，相同的撞在一起合成更大的一只。">
+<!-- ↓ Monetag 站点验证：把后台给的 meta 标签粘在下面这一行 ↓ -->
+
+<title>合成大奶娃</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<main class="app">
+
+  <!-- ===== 游戏区 ===== -->
+  <section class="stage" id="stage">
+    <canvas id="game" aria-label="合成大奶娃游戏区域"></canvas>
+
+    <!-- 复活币：浮在棋盘左上角。
+         刻意不放进顶部信息条 —— 手机上面板是横向 flex，
+         多一个卡片会把「分数 / 最高分」挤到 52px 宽还折行（实测面板从 66px 涨到 102px）。
+         这里 pointer-events 关掉，永远不会挡住投放。 -->
+    <div class="revive-chip" id="reviveBadge" hidden>
+      <span class="revive-chip-ico" aria-hidden="true">🪙</span><span id="reviveCount">×0</span>
+    </div>
+
+    <div class="overlay" id="overlay">
+      <div class="dialog">
+
+        <!-- ===== 越线第一屏：有复活币时才出现 ===== -->
+        <div class="revive-ask" id="revivePrompt" hidden>
+          <div class="dialog-emoji">😵</div>
+          <h2>还能再救一下</h2>
+          <p class="dialog-score">本局得分 <strong id="reviveScore">0</strong></p>
+          <p class="revive-hint">清掉警戒线以上的水果，接着玩</p>
+          <div class="dialog-actions">
+            <button class="btn" id="giveUpBtn" type="button">不了，结束吧</button>
+            <button class="btn btn-revive" id="reviveBtn" type="button">🪙 用一枚复活币</button>
+          </div>
+          <p class="dialog-hint" id="reviveLeft">还剩 1 枚</p>
+        </div>
+
+        <!-- ===== 第二屏：正式结算 ===== -->
+        <div id="overPanel">
+          <div class="dialog-emoji">🍉</div>
+          <h2 id="overTitle">游戏结束</h2>
+          <p class="dialog-score">本局得分 <strong id="finalScore">0</strong></p>
+          <p class="dialog-best">最高分 <span id="finalBest">0</span></p>
+
+          <div class="submit-box" id="submitBox">
+            <p class="submit-msg" id="submitMsg">正在结算…</p>
+            <p class="my-name">昵称：<strong id="myNameLabel">默认用户</strong>
+              <button class="link-btn" id="editNameBtn" type="button">改昵称</button>
+            </p>
+            <button class="btn" id="submitBtn" type="button" hidden>重试提交</button>
+          </div>
+
+          <div class="dialog-actions">
+            <button class="btn" id="boardBtn2" type="button">🏆 排行榜</button>
+            <button class="btn btn-primary" id="restartBtn" type="button">再来一局</button>
+            <button class="btn btn-sponsor btn-wide" id="sponsorBtn" type="button">🌶️ 可以赏作者一包辣条嘛</button>
+          </div>
+          <p class="dialog-hint">按 R 键也可重新开始</p>
+        </div>
+
+      </div>
+    </div>
+  </section>
+
+  <!-- ===== 侧边面板 ===== -->
+  <aside class="panel">
+
+    <header class="panel-head">
+      <h1>合成大奶娃</h1>
+      <p class="subtitle">相同的撞在一起，越合越大</p>
+    </header>
+
+    <div class="stats">
+      <div class="stat">
+        <span class="stat-label">分数</span>
+        <strong class="stat-value" id="score">0</strong>
+      </div>
+      <div class="stat">
+        <span class="stat-label">最高分</span>
+        <strong class="stat-value stat-best" id="best">0</strong>
+      </div>
+    </div>
+
+    <div class="next-box">
+      <span class="box-label">下一个</span>
+      <canvas id="next" width="160" height="160" aria-label="下一个"></canvas>
+    </div>
+
+    <div class="chain-box">
+      <span class="box-label">合成表</span>
+      <canvas id="chain" width="680" height="112" aria-label="合成顺序"></canvas>
+      <p class="chain-note">✨ 两个神奶蛙撞在一起会一起炸掉，换 <strong>500 分</strong> + <strong>一枚复活币</strong></p>
+    </div>
+
+    <div class="actions">
+      <button class="btn btn-wide" id="boardBtn" type="button">
+        <span class="ico">🏆</span><span class="lbl">排行榜</span>
+      </button>
+      <button class="btn" id="soundBtn" type="button" aria-pressed="true">
+        <span class="ico">🔊</span><span class="lbl">音效开</span>
+      </button>
+      <button class="btn btn-primary" id="resetBtn" type="button" title="重新开始">
+        <span class="ico">↻</span><span class="lbl">重开</span>
+      </button>
+    </div>
+
+    <p class="tips">
+      鼠标：移动瞄准、点击投放；触屏：拖动瞄准、松手投放。<br>
+      ← → 微调位置，空格投放，R 重开。<br>
+      每 <strong>2000 分</strong>攒一枚<strong>复活币</strong>，只在本局有效。
+    </p>
+
+  </aside>
+
+</main>
+
+<!-- ===== 排行榜弹窗 ===== -->
+<div class="modal" id="boardModal" aria-hidden="true" role="dialog" aria-label="排行榜">
+  <div class="modal-card">
+    <header class="modal-head">
+      <h2>🏆 最近高手榜</h2>
+      <button class="icon-btn" id="boardClose" type="button" aria-label="关闭">✕</button>
+    </header>
+    <div class="nick-row">
+      <label class="nick-label" for="nickInput">我的昵称</label>
+      <input class="nick-input" id="nickInput" type="text" maxlength="12"
+             placeholder="默认用户" autocomplete="nickname" enterkeyhint="done">
+    </div>
+    <div class="board-list" id="boardList"></div>
+    <footer class="modal-foot">
+      <span class="board-note">只取最近 20 次提交，成绩会被后来的人挤下去</span>
+      <button class="btn" id="boardRefresh" type="button">刷新</button>
+    </footer>
+  </div>
+</div>
+
+<!-- ===== 赞助作者弹窗 ===== -->
+<div class="modal" id="sponsorModal" aria-hidden="true" role="dialog" aria-label="赞助作者">
+  <div class="modal-card">
+    <header class="modal-head">
+      <h2>🌶️ 请作者吃包辣条</h2>
+      <button class="icon-btn" id="sponsorClose" type="button" aria-label="关闭">✕</button>
+    </header>
+    <div class="sponsor-body">
+      <p class="sponsor-note">这游戏完全免费，也没有任何广告。<br>
+        要是它逗你笑了一下，赏作者一包辣条呗 🌶️</p>
+      <img class="sponsor-qr" src="assets/sponsor-qr.jpg" width="480" height="480"
+           alt="微信收款码" loading="lazy" decoding="async">
+      <p class="sponsor-hint">微信扫一扫 · 一包辣条 · 全凭心意</p>
+    </div>
+    <footer class="modal-foot">
+      <span class="board-note">谢谢每一位投喂的玩家 ❤️</span>
+      <button class="btn" id="sponsorOk" type="button">关闭</button>
+    </footer>
+  </div>
+</div>
+
+<!-- 碰撞形状数据（按贴图轮廓自动生成，由 tools/build_parts.py 产出） -->
+<script src="assets/fruits/parts.js"></script>
+<!-- 极模糊占位图（内联 data URL，由 tools/make_blur.py 产出）：贴图没到位时先画它 -->
+<script src="assets/fruits/blur.js"></script>
+<script src="game.js"></script>
+<!-- 排行榜 -->
+<script src="leaderboard.min.js"></script>
+<!-- 赞助作者 -->
+<script src="sponsor.js"></script>
+</body>
+</html>

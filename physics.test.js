@@ -70,9 +70,9 @@ const sandbox = {
 sandbox.window = sandbox;
 sandbox.globalThis = sandbox;
 vm.createContext(sandbox);
-vm.runInContext(fs.readFileSync(path.join(root, 'assets', 'fruits', 'parts.js'), 'utf8'),
+vm.runInContext(fs.readFileSync(path.join(root, 'v1', 'assets', 'fruits', 'parts.js'), 'utf8'),
                 sandbox, { filename: 'parts.js' });
-vm.runInContext(fs.readFileSync(path.join(root, 'game.js'), 'utf8'), sandbox, { filename: 'game.js' });
+vm.runInContext(fs.readFileSync(path.join(root, 'v1', 'game.js'), 'utf8'), sandbox, { filename: 'game.js' });
 
 const H = 700, W = 420, WALL = 10, R = [17, 23, 31, 39, 48, 58, 69, 81, 94, 108, 124];
 const S = sandbox.__DNW__.state;
