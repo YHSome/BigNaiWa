@@ -81,10 +81,10 @@ function makeFixtures(Sim) {
   /* 两条老实成绩 + 一条「真回放假分数」（能进榜，验出来是 ❌）+ 一条老格式（该被丢） */
   const fake = { v: 2, seed: c.seed, end: c.end, score: c.score + 8000, inputs: c.inputs };
   const board = {
-    dnw2_e2e_ok1: JSON.stringify({ n: '老实人甲', s: a.score, t: now, r: Sim.encode(a) }),
-    dnw2_e2e_ok2: JSON.stringify({ n: '老实人乙', s: b.score, t: now - 5000, r: Sim.encode(b) }),
-    dnw2_e2e_bad: JSON.stringify({ n: '我是榜一', s: c.score + 8000, t: now, r: Sim.encode(fake) }),
-    dnw2_e2e_legacy: JSON.stringify({ n: '老版刷分', s: 99999999, t: now })
+    dnw_e2e_ok1: JSON.stringify({ n: '老实人甲', s: a.score, t: now, r: Sim.encode(a) }),
+    dnw_e2e_ok2: JSON.stringify({ n: '老实人乙', s: b.score, t: now - 5000, r: Sim.encode(b) }),
+    dnw_e2e_bad: JSON.stringify({ n: '我是榜一', s: c.score + 8000, t: now, r: Sim.encode(fake) }),
+    dnw_e2e_legacy: JSON.stringify({ n: '老版刷分', s: 99999999, t: now })
   };
   return {
     saves: JSON.stringify(saves),

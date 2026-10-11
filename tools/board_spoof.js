@@ -16,7 +16,7 @@
  *   node tools/board_spoof.js fakereplay --name X --score 99999999   攻击2：编一段回放，分数写得跟它一致
  *   node tools/board_spoof.js pin        --name X [--years 10]       攻击3：t 拨到未来，想永久占窗口
  *   node tools/board_spoof.js freeze     --name X [--count 20]       攻击4：灌满「最近 20 条」窗口
- *   node tools/board_spoof.js remove     --tag dnw2_xxx_yy           攻击5：删掉别人的记录（可用性攻击）
+ *   node tools/board_spoof.js remove     --tag dnw_xxx_yy            攻击5：删掉别人的记录（可用性攻击）
  *
  *   所有写操作默认真的发包；加 --dry-run 只打印表单不落库。
  *   加 --raw 时读榜走原始 dump，不套任何客户端规则。
@@ -32,9 +32,9 @@ const path = require('path');
 const Sim = require(path.join(__dirname, '..', 'sim.js'));
 
 const API = 'https://tinywebdb.appinventor.space/api';
-const USER = 'danaiwa';
-const SECRET = '6f52518c';
-const PREFIX = 'dnw2_';        // 与 leaderboard.js 一致
+const USER = 'dnwmd';
+const SECRET = '04c45101';
+const PREFIX = 'dnw_';         // 与 leaderboard.js 一致
 const MAX_SCORE = 99999999;
 const WINDOW_DAYS = 30;        // 读的一侧只认最近 30 天
 const SKEW_MS = 120000;        // 允许 2 分钟时钟误差
@@ -376,7 +376,7 @@ async function cmdRemove(argv) {
   const dry = !!arg(argv, 'dry-run');
   const tag = arg(argv, 'tag', null);
   if (!tag) {
-    console.error('要指定 --tag <dnw2_xxx_yy>（可以先用 read 看 tag）。');
+    console.error('要指定 --tag <dnw_xxx_yy>（可以先用 read 看 tag）。');
     console.error('只对自己的记录做这个实验 —— 删别人的是破坏别人的数据。');
     process.exit(1);
   }

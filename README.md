@@ -210,7 +210,7 @@ npx --yes http-server -p 8080
   客户端的补救是 `leaderboard.js` 的 `selfHeal()`：把自己那条的 `(tag, value)` 存在
   `localStorage`，每次读榜发现它被删了或被改了，就原样写回去（同一个 tag 覆盖回去，
   内容逐字节一样，一分钟最多补一次）。想根治只能上后端（写入鉴权）。
-  `node tools/board_spoof.js remove --tag <dnw2_xxx_yy>` 可以把这条攻击演示一遍。
+  `node tools/board_spoof.js remove --tag <dnw_xxx_yy>` 可以把这条攻击演示一遍。
 - **验证有成本**：一局 100 秒的对局大约要重跑 5 秒。验证超过 90 秒的记录标成「验证太慢」跳过，
   `MAX_TICKS` 把回放上限卡在 30 分钟——都是为了不让验证者被超长回放拖垮。
 
@@ -221,20 +221,20 @@ npx --yes http-server -p 8080
 | 接口 | `POST https://tinywebdb.appinventor.space/api` |
 | 账号 | `user` / `secret` 明文写在 `leaderboard.js` 顶部——**它已经不是安全边界了**，泄露也无所谓 |
 | 用到的 action | `update`（写）、`search`（按 tag 前缀读） |
-| tag | `dnw2_<时间戳36进制>_<随机4位>` |
+| tag | `dnw_<时间戳36进制>_<随机4位>` |
 | value | `{"n":"昵称","s":分数,"t":时间戳,"r":"v2;回放"}` |
 
-前缀换成 `dnw2_` 是因为旧格式的记录没有回放，在新规则下一律不算数；换前缀等于另开一个干净的榜。
+前缀是 `dnw_`。榜跑在新的 TinyWebDB 账号上，旧账号里那些没有回放的旧记录全部留在原地，不会混进来。
 
 ```js
 // 提交
 POST user=<你的 user>&secret=<你的 secret>&action=update
-     &tag=dnw2_mukuffr8_435q
+     &tag=dnw_mukuffr8_435q
      &value={"n":"奶娃大王","s":4321,"t":1759000000000,"r":"v2;9ix;2a5;1049;0:2yo,m:4sg,..."}
 
 // 读榜（3 页 × 100 条，按 tag 前缀）
-POST user=<你的 user>&secret=<你的 secret>&action=search&no=1&count=100&tag=dnw2_&type=both
-→ {"dnw2_mukuffr8_435q":"{\"n\":\"奶娃大王\",\"s\":4321,...,\"r\":\"v2;...\"}"}
+POST user=<你的 user>&secret=<你的 secret>&action=search&no=1&count=100&tag=dnw_&type=both
+→ {"dnw_mukuffr8_435q":"{\"n\":\"奶娃大王\",\"s\":4321,...,\"r\":\"v2;...\"}"}
 ```
 
 **结算流程**（打完自动上榜，不需要手动点提交）：

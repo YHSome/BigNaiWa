@@ -33,12 +33,12 @@
 
   /* —— TinyWebDB（公共 key-value，secret 只是用来过接口，不是安全边界） —— */
   var API = 'https://tinywebdb.appinventor.space/api';
-  var USER = 'danaiwa';
-  var SECRET = '6f52518c';
+  var USER = 'dnwmd';
+  var SECRET = '04c45101';
 
-  /* 换前缀 = 另开一个榜。老榜的数据是 {n,s,t} 没有回放，新规则下一律不算数，
-     所以直接换个前缀重新开始，顺带把那些刷屏的垃圾记录留在旧前缀里。 */
-  var PREFIX = 'dnw2_';
+  /* 前缀 = 榜单的 namespace。现在跑在新的 TinyWebDB 账号上，前缀换回 dnw_ ——
+     新账号里是空的，旧账号的榜从头开始，两边互不干扰。 */
+  var PREFIX = 'dnw_';
 
   var NAME_KEY = 'danaiwa.name';
   var DEFAULT_NAME = '默认用户';

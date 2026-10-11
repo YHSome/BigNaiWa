@@ -154,23 +154,23 @@ console.log('      ' + [g1, g2, g3].map(g => g.score + '分/' + g.inputs.length 
 const enc1 = Sim.encode(g1), enc2 = Sim.encode(g2), enc3 = Sim.encode(g3);
 
 /* ---------- 构造数据 ---------- */
-db['dnw2_honest1'] = JSON.stringify({ n: '老实人甲', s: g1.score, t: now, r: enc1 });
-db['dnw2_honest2'] = JSON.stringify({ n: '老实人乙', s: g2.score, t: now - 5000, r: enc2 });
+db['dnw_honest1'] = JSON.stringify({ n: '老实人甲', s: g1.score, t: now, r: enc1 });
+db['dnw_honest2'] = JSON.stringify({ n: '老实人乙', s: g2.score, t: now - 5000, r: enc2 });
 /* 作弊 A：JSON 里的分数比回放算出来的高 —— 应该在「对不上」这关被丢掉 */
-db['dnw2_mismatch'] = JSON.stringify({ n: '假分数', s: g1.score + 8000, t: now, r: enc1 });
+db['dnw_mismatch'] = JSON.stringify({ n: '假分数', s: g1.score + 8000, t: now, r: enc1 });
 /* 作弊 B：回放和分数自洽（都写 g3+8000），但重跑模拟根本打不出这个分 —— 只能靠验证抓住 */
-db['dnw2_fake'] = JSON.stringify({
+db['dnw_fake'] = JSON.stringify({
   n: '我是榜一',
   s: g3.score + 8000,
   t: now,
   r: Sim.encode({ v: 2, seed: g3.seed, end: g3.end, score: g3.score + 8000, inputs: g3.inputs })
 });
 /* 老格式：直接写个数字，没有回放 */
-db['dnw2_legacy']  = JSON.stringify({ n: '老版刷分', s: 99999999, t: now });
+db['dnw_legacy']  = JSON.stringify({ n: '老版刷分', s: 99999999, t: now });
 /* 时间戳拨到未来：老榜的 pin 手法 */
-db['dnw2_future']  = JSON.stringify({ n: '未来人', s: 99999999, t: now + 10 * 365 * 86400000, r: enc2 });
+db['dnw_future']  = JSON.stringify({ n: '未来人', s: 99999999, t: now + 10 * 365 * 86400000, r: enc2 });
 /* 同一份回放再提交一次（更早的时间戳）→ 该被去重掉 */
-db['dnw2_dup']     = JSON.stringify({ n: '复制怪', s: g1.score, t: now - 90000, r: enc1 });
+db['dnw_dup']     = JSON.stringify({ n: '复制怪', s: g1.score, t: now - 90000, r: enc1 });
 
 console.log('[1] 读榜 + 过滤规则');
 let meta = null;
