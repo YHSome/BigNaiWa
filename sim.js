@@ -359,7 +359,7 @@
             if (cdx * cdx + cdy * cdy >= rbSum * rbSum) continue;
 
             const pa = a.parts.length, pb = b.parts.length;
-            const brb = b.rb, arb = a.rb;
+            const brb = b.rb;
             let minGap = 1e9, bnx = 0, bny = 0;
 
             for (let m = 0; m < pa; m++) {
@@ -526,7 +526,7 @@
 
     /* 回放专用：规则和 tryDrop 完全一致（冷却、判负都不能绕），
        唯一区别是不写 inputs —— 不然边跑边涨会变成死循环。 */
-    function injectDrop(x, t) {
+    function injectDrop(x) {
       if (state.over || !state.ready) return false;
       const tier = state.pending;
       const lim = aimLimit(tier);
@@ -857,7 +857,7 @@
 
       /* 1) 这个 tick 到期的投放 */
       while (i < n && inputs[i].t === t) {
-        if (!sim.injectDrop(inputs[i].x, t)) {
+        if (!sim.injectDrop(inputs[i].x)) {
           err = '投放时机不合法（冷却中或已结束）';
           return false;
         }

@@ -92,7 +92,7 @@ const sandbox = {
   console, Math, Date, JSON, Object, Array, Number, String, Boolean, Error, isNaN,
   Promise, URLSearchParams, setTimeout, clearTimeout, isFinite, parseInt, parseFloat,
   performance: { now: () => Date.now() },
-  requestAnimationFrame(fn) { return 1; },
+  requestAnimationFrame() { return 1; },
   fetch: fakeFetch,
   document: {
     readyState: 'complete', activeElement: null,
@@ -151,7 +151,7 @@ const g3 = playGame(3003);
 const now = Date.now();
 console.log('      ' + [g1, g2, g3].map(g => g.score + '分/' + g.inputs.length + '投').join('，'));
 
-const enc1 = Sim.encode(g1), enc2 = Sim.encode(g2), enc3 = Sim.encode(g3);
+const enc1 = Sim.encode(g1), enc2 = Sim.encode(g2);
 
 /* ---------- 构造数据 ---------- */
 db['dnw_honest1'] = JSON.stringify({ n: '老实人甲', s: g1.score, t: now, r: enc1 });

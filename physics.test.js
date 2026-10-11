@@ -293,7 +293,6 @@ check('R 键仍可重开', S.over === false && S.balls.length === 0,
 
 /* ---- 7. 判负规则：只有「卡在线上方且基本停住」才计时 ---- */
 console.log('[7] 判负规则');
-const DANGER_Y = 142;
 const UP_Y = 130;          // 顶在线上方的位置
 const DOWN_Y = 400;        // 线下方
 

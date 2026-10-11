@@ -444,8 +444,8 @@ python tools/normalize_assets.py
 - **素材加载**：等 `img.decode()` 完成才交给 `drawImage`，避免画出没解码完的半成品。
 - **音效**：WebAudio 振荡器实时合成，无音频文件；可一键静音并记忆设置。
 - **存档**：最高分与静音状态存 `localStorage`。
-- **调试**：控制台可用 `__SUIKA__.state`、`__SUIKA__.reset()`、`__SUIKA__.drop()`、
-  `__SUIKA__.FRUITS`、`__SUIKA__.render()`。
+- **调试**：控制台可用 `__DNW__.state`、`__DNW__.reset()`、`__DNW__.tryDrop()`、
+  `__DNW__.FRUITS`、`__DNW__.render()`。
 
 ## 物理自检
 

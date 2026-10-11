@@ -38,7 +38,6 @@ const PREFIX = 'dnw_';         // 与 leaderboard.js 一致
 const MAX_SCORE = 99999999;
 const WINDOW_DAYS = 30;        // 读的一侧只认最近 30 天
 const SKEW_MS = 120000;        // 允许 2 分钟时钟误差
-const TOP = 20;                // 榜单条数
 const CANDIDATES = 40;         // 验证前多捞的候选数
 const SCAN_PAGES = 3;
 const PAGE = 100;

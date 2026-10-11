@@ -33,7 +33,6 @@
   /* 玩法数值也从 sim 拿：加分、发复活币、清场定格全发生在那一边，
      两边各写一份的话改了一边忘另一边，回放就对不上了。 */
   const MAX_BONUS = S.MAX_BONUS;     // 两只神奶蛙相撞的奖励分（自检要读）
-  const REVIVE_STEP = S.REVIVE_STEP; // 每累计多少分发一枚复活币
 
   /* 每局一个随机种子。它会跟着回放一起上传，
      验证的人用同一个种子就能重放出完全一样的出球顺序。 */
@@ -178,8 +177,7 @@
   let wasOverlay = false;     // 进回放前结束遮罩是不是开着
   let wasModal = false;       // 进回放前排行榜弹窗是不是开着
 
-  /* 碰撞形状、刚体构造也都在 sim.js（贴图轮廓数据照旧来自 parts.js） */
-  const shapeOf = sim.shapeOf;
+  /* 刚体构造也都在 sim.js（贴图轮廓数据照旧来自 parts.js） */
   const makeBall = sim.makeBall;
 
   /* ---------------------------------------------------------
@@ -1161,18 +1159,17 @@
     boot();
   }
 
-  /* 调试句柄（控制台可用）：__DNW__.state / .reset() / .drop() / .FRUITS / .render() /
+  /* 调试句柄（控制台可用）：__DNW__.state / .reset() / .tryDrop() / .FRUITS / .render() /
      __DNW__.playReplay(record, meta) / .stopReplay() —— 后两个是「重放」按钮的入口。
      state 是 getter：看回放时它指向播放实例，退出来又指回你这一局，
      而 `sim.state`（你那一局）从头到尾是同一个对象，测试可以直接拿。
-     revive / settle / gameOver / addScore 是玩法层的入口（复活系统自检用）。 */
+     revive / gameOver / addScore 是玩法层的入口（复活系统自检用）。 */
   window.__DNW__ = {
     get state() { return state; },
-    reset, tryDrop, stepPhysics, FRUITS, render, resizeCanvas, shapeOf, makeBall, sim,
+    reset, tryDrop, stepPhysics, FRUITS, render, makeBall, sim,
     playReplay, stopReplay,
-    revive, settle, gameOver, askRevive, paintRevives, addScore, pumpEvents, update,
-    MAX_BONUS, REVIVE_STEP,
-    blurReady: () => !!blurImg,
+    revive, gameOver, addScore, pumpEvents, update,
+    MAX_BONUS,
     get mode() { return mode; },
     get player() { return player; },
     get playSpeed() { return playSpeed; }

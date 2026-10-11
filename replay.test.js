@@ -169,7 +169,7 @@ check('同一份回放跑两次结果一致', r2.ok && r2.score === r1.score && 
 
 /* ---- 4. 伪造手法 ---- */
 console.log('[4] 伪造全部要被拒');
-function reject(label, payload, expectReason) {
+function reject(label, payload) {
   const r = Sim.verify(payload);
   check(label, !r.ok, r.ok ? '居然通过了！' : '已拒绝（' + r.reason + '）');
 }
