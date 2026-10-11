@@ -51,7 +51,7 @@ function makeEl(id) {
 }
 const els = {};
 ['game', 'stage', 'overlay', 'score', 'best', 'finalScore', 'finalBest',
- 'next', 'chain', 'soundBtn', 'resetBtn', 'restartBtn'].forEach(id => els[id] = makeEl(id));
+ 'next', 'chain', 'soundBtn', 'resetBtn', 'restartBtn', 'giveUpBtn'].forEach(id => els[id] = makeEl(id));
 
 const rafQueue = [];
 const winListeners = {};
@@ -132,6 +132,14 @@ for (let i = 0; i < 4000 && !submitted.replay; i++) {
   pump(10);
 }
 pump(600);
+
+/* 这局要是攒够了 2000 分，判负时会先弹「用复活币救回来吗」—— 不点就永远不结算，
+   onGameOver 也不会触发（每局种子是随机的，所以这一步可能命中也可能不命中）。
+   这里替玩家点「放弃」，让结算走完。 */
+if (!submitted.replay && els.giveUpBtn) {
+  const giveUp = listeners.get(els.giveUpBtn);
+  if (giveUp && giveUp.click) giveUp.click();
+}
 
 check('真的打到判负（拿到回放）', !!submitted.replay, submitted.replay ? '' : '没触发 onGameOver');
 if (!submitted.replay) { console.log('\n失败'); process.exit(1); }
