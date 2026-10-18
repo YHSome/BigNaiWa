@@ -32,6 +32,19 @@
   const SCAN_PAGES = 2;             // 榜单只取最近 20 次提交，扫最新两页足够
   const WINDOW = 20;                // 「最近 N 次提交」这个窗口的大小
 
+  /* ---------------------------------------------------------
+   *  排行榜界面开关（临时关闭）
+   *
+   *  false = 不展示榜单：入口按钮隐藏、弹窗打不开、也不再拉取榜单数据。
+   *  但**成绩照旧上传** —— 打完一局仍然会 onGameOver → addScore 写进库里，
+   *  只是玩家看不到别人的成绩而已。
+   *
+   *  想恢复榜单界面：把这里改成 true，然后跑
+   *      python tools/minify-leaderboard.py
+   *  重新生成 leaderboard.min.js。
+   * ------------------------------------------------------- */
+  const BOARD_UI_ENABLED = false;
+
   const $ = (id) => document.getElementById(id);
 
   /* ---------------------------------------------------------
@@ -243,6 +256,9 @@
   }
 
   function refreshBoard(myScore) {
+    /* 界面关掉的时候不拉榜单（省一次请求），但保留 Promise 语义，
+       好让 pushScore 里的链路照常往下走 */
+    if (!BOARD_UI_ENABLED) return Promise.resolve([]);
     boardMessage('正在读取排行榜…');
     return fetchTop().then((rows) => {
       renderBoard(rows, myScore);
@@ -254,6 +270,7 @@
   }
 
   function openBoard() {
+    if (!BOARD_UI_ENABLED) return;      // 榜单暂时关闭，弹窗一律不打开
     if (!modal) return;
     modal.classList.add('show');
     modal.setAttribute('aria-hidden', 'false');
@@ -286,7 +303,7 @@
 
     return addScore(name, score).then(() => {
       lastSubmitAt = Date.now();
-      setMsg('已上榜 ✓　' + name + ' · ' + score + ' 分', 'good');
+      setMsg((BOARD_UI_ENABLED ? '已上榜 ✓　' : '成绩已上传 ✓　') + name + ' · ' + score + ' 分', 'good');
       return refreshBoard(score).then(() => true, () => true);
     }).catch((err) => {
       setMsg('提交失败：' + err.message, 'bad');
@@ -326,10 +343,20 @@
 
   function bind() {
     const boardBtn = $('boardBtn');
-    if (boardBtn) boardBtn.addEventListener('click', openBoard);
-
     const boardBtn2 = $('boardBtn2');
-    if (boardBtn2) boardBtn2.addEventListener('click', openBoard);
+
+    if (BOARD_UI_ENABLED) {
+      if (boardBtn) boardBtn.addEventListener('click', openBoard);
+      if (boardBtn2) boardBtn2.addEventListener('click', openBoard);
+    } else {
+      /* 榜单暂时关闭：把两处入口按钮藏掉（style.css 里 [hidden] 是 display:none !important） */
+      if (boardBtn) boardBtn.hidden = true;
+      if (boardBtn2) boardBtn2.hidden = true;
+      if (modal) {
+        modal.classList.remove('show');
+        modal.setAttribute('aria-hidden', 'true');
+      }
+    }
 
     const closeBtn = $('boardClose');
     if (closeBtn) closeBtn.addEventListener('click', closeBoard);
@@ -365,6 +392,16 @@
     const editNameBtn = $('editNameBtn');
     if (editNameBtn) {
       editNameBtn.addEventListener('click', () => {
+        if (!BOARD_UI_ENABLED) {
+          /* 榜单关着的时候弹窗打不开，改昵称就用浏览器原生输入框 */
+          const next = window.prompt('改个昵称（最多 12 字，留空＝默认用户）', loadName());
+          if (next !== null) {
+            saveName(cleanName(next));
+            paintName();
+            if (nickInput) nickInput.value = loadName();
+          }
+          return;
+        }
         openBoard();
         if (nickInput) setTimeout(() => { nickInput.focus(); nickInput.select(); }, 260);
       });
