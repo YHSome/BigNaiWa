@@ -33,17 +33,15 @@
   const WINDOW = 20;                // 「最近 N 次提交」这个窗口的大小
 
   /* ---------------------------------------------------------
-   *  排行榜界面开关（临时关闭）
+   *  排行榜界面开关
    *
-   *  false = 不展示榜单：入口按钮隐藏、弹窗打不开、也不再拉取榜单数据。
-   *  但**成绩照旧上传** —— 打完一局仍然会 onGameOver → addScore 写进库里，
-   *  只是玩家看不到别人的成绩而已。
+   *  true  = 正常展示榜单（面板入口 + 结算弹窗入口都在）
+   *  false = 不展示榜单（入口隐藏、弹窗打不开、也不拉榜单），但成绩照旧上传
    *
-   *  想恢复榜单界面：把这里改成 true，然后跑
+   *  改完记得重新压一次：
    *      python tools/minify-leaderboard.py
-   *  重新生成 leaderboard.min.js。
    * ------------------------------------------------------- */
-  const BOARD_UI_ENABLED = false;
+  const BOARD_UI_ENABLED = true;
 
   const $ = (id) => document.getElementById(id);
 
@@ -152,10 +150,82 @@
    *  昵称
    * ------------------------------------------------------- */
 
+  /* ---------- 屏蔽词 ----------
+   * 命中就直接把昵称换成「默认用户」。
+   *  · 匹配前先做归一化：全角转半角、去掉空格 / 标点 / emoji、英文转小写，
+   *    这样「习 近」「习·近」「蔣介石」「ＸＩ」这类插空格的写法也挡得住
+   *  · 按「子串」匹配，所以只收 2 个字以上的词（单字会大面积误伤，例如「习」会打到「练习」）
+   *  · 这是**前端软过滤**：直接构造请求仍然能绕过，只用于拦住玩家随手输的脏名字。
+   *    要更严就得在后端做（这个免费接口没有后端我们控制不了）。
+   *  · 想增删词：直接改这个数组即可，改完重新压 min 文件。 */
+  const BANNED_WORDS = [
+    /* —— 政治人物 / 敏感词 —— */
+    '习近', '近平', '习大大', '习总', '习主', '毛泽东', '毛贼', '周恩', '蒋介石', '蒋介',
+    '蔡英文', '赖清德', '马英九', '李登辉', '陈水扁', '达赖', '法轮', '六四', '天安门',
+    '吾尔开希', '刘晓波', '薄熙来', '周永康', '令计划', '郭文贵', '孙政才', '徐才厚',
+    '台独', '港独', '疆独', '藏独', '反共', '灭共', '共匪', '支那', '独裁者',
+    '中南海', '亡党', '颠覆国家', '游行示威', '政变', '兵变',
+
+    /* —— 辱骂 / 脏话 —— */
+    '傻逼', '傻b', '傻比', '煞笔', '沙比', '傻屌', '傻鸟', '脑残', '智障', '弱智',
+    '贱人', '贱货', '婊子', '骚货', '狗东西', '狗日的', '畜生', '杂种', '野种',
+    '你妈', '妈的', '他妈', '尼玛', '草泥马', '卧槽', '我操', '操你', '日你', '干你',
+    '滚你', '去死', '死全家', '全家死', '废物', '垃圾人', '狗屎', '屎一样',
+
+    /* —— 色情 / 导流（顺手一起挡） —— */
+    '色情', '裸聊', '黄片', '约炮', '招嫖', '卖淫', '代孕', '赌博', '博彩', '洗钱',
+    '加微信', '加qq', '加群', '扫码领', '刷单',
+
+    /* —— 英文脏话 —— */
+    'fuck', 'shit', 'bitch', 'asshole', 'bastard', 'nigger', 'nigga', 'cunt',
+    'dick', 'pussy', 'motherfuck', 'whore', 'slut', 'retard'
+  ];
+
+  /* 归一化：只留汉字 / 字母 / 数字，方便子串匹配 */
+  function normalizeForMatch(raw) {
+    return String(raw || '')
+      /* 全角字符 → 半角（！～ → !~） */
+      .replace(/[\uff01-\uff5e]/g, (c) => String.fromCharCode(c.charCodeAt(0) - 0xfee0))
+      .toLowerCase()
+      /* 空格、标点、符号、emoji 统统去掉 */
+      .replace(/[^\u4e00-\u9fa5a-z0-9]/g, '');
+  }
+
+  const BANNED_NORM = BANNED_WORDS.map(normalizeForMatch).filter(Boolean);
+
+  /* 是否含屏蔽词 */
+  function hasBannedWord(raw) {
+    const s = normalizeForMatch(raw);
+    if (!s) return false;
+    for (let i = 0; i < BANNED_NORM.length; i++) {
+      if (s.indexOf(BANNED_NORM[i]) >= 0) return true;
+    }
+    return false;
+  }
+
+  /* 上一次 cleanName 是否因为屏蔽词被替换（只用于提示用户） */
+  let nameBlocked = false;
+
   function cleanName(raw) {
     // 去掉控制字符和首尾空白，限长
     let n = String(raw || '').replace(/[\u0000-\u001f\u007f]/g, '').trim();
     if (n.length > 12) n = n.slice(0, 12);
+    // 含屏蔽词 → 一律记成「默认用户」
+    if (hasBannedWord(n)) {
+      nameBlocked = true;
+      n = DEFAULT_NAME;
+    }
+    return n;
+  }
+
+  /* 统一入口：清洗（含屏蔽词）+ 保存 + 必要时提示 */
+  function commitName(raw) {
+    nameBlocked = false;
+    const n = cleanName(raw);
+    saveName(n);
+    if (nameBlocked) setMsg('昵称含屏蔽词，已改用「' + DEFAULT_NAME + '」', 'bad');
+    paintName();
+    if (nickInput) nickInput.value = loadName();
     return n;
   }
 
@@ -236,7 +306,8 @@
 
       const name = document.createElement('span');
       name.className = 'board-name';
-      name.textContent = row.name;
+      /* 榜单里已有的历史昵称也过一遍屏蔽词（老数据里可能留着脏名字） */
+      name.textContent = hasBannedWord(row.name) ? DEFAULT_NAME : row.name;
 
       const score = document.createElement('span');
       score.className = 'board-score';
@@ -374,14 +445,10 @@
 
     if (submitBtn) submitBtn.addEventListener('click', retry);
 
-    /* 昵称随时能改，改完记本地；空着就用默认用户 */
+    /* 昵称随时能改，改完记本地；含屏蔽词或空着都用「默认用户」 */
     if (nickInput) {
       nickInput.value = loadName();
-      const commit = () => {
-        saveName(cleanName(nickInput.value));
-        nickInput.value = loadName();
-        paintName();
-      };
+      const commit = () => { commitName(nickInput.value); };
       nickInput.addEventListener('change', commit);
       nickInput.addEventListener('blur', commit);
       nickInput.addEventListener('keydown', (e) => {
@@ -395,11 +462,7 @@
         if (!BOARD_UI_ENABLED) {
           /* 榜单关着的时候弹窗打不开，改昵称就用浏览器原生输入框 */
           const next = window.prompt('改个昵称（最多 12 字，留空＝默认用户）', loadName());
-          if (next !== null) {
-            saveName(cleanName(next));
-            paintName();
-            if (nickInput) nickInput.value = loadName();
-          }
+          if (next !== null) commitName(next);
           return;
         }
         openBoard();
@@ -428,7 +491,7 @@
     fetchTop: fetchTop,
     submitScore: addScore,
     myName: myName,
-    setName: function (n) { saveName(cleanName(n)); paintName(); },
+    setName: function (n) { commitName(n); },
     hasName: function () { return !!loadName(); }
   };
 })();
