@@ -82,8 +82,8 @@ sandbox.window = sandbox;
 sandbox.window.addEventListener = (t, fn) => { winListeners[t] = fn; };
 vm.createContext(sandbox);
 const load = (f) => vm.runInContext(fs.readFileSync(path.join(root, f), 'utf8'), sandbox, { filename: f });
-load('assets/fruits/parts.js');
-load('game.js');
+load('v1/assets/fruits/parts.js');
+load('v1/game.js');
 
 let gameOverCalls = 0;
 sandbox.window.DanaiwaBoard = { onGameOver() { gameOverCalls++; return 'orig'; } };

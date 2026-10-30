@@ -20,7 +20,7 @@ import re
 from PIL import Image, ImageFilter
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-FRUIT_DIR = os.path.join(ROOT, "assets", "fruits")
+FRUIT_DIR = os.path.join(ROOT, "v1", "assets", "fruits")
 OUT_JS = os.path.join(FRUIT_DIR, "blur.js")
 
 CELL = 32           # 每格 32x32：再小上采样会明显发块，再大体积涨得快
@@ -29,7 +29,7 @@ QUALITY = 55        # 占位图不需要画质；实测 40~72 体积只差几百
 
 
 def main():
-    src_js = open(os.path.join(ROOT, "game.js"), encoding="utf-8").read()
+    src_js = open(os.path.join(ROOT, "v1", "game.js"), encoding="utf-8").read()
     files = re.findall(r"file:\s*'assets/fruits/([^']+)'", src_js)
     if len(files) != 11:
         print("从 game.js 里解析出 %d 个贴图，预期 11 个，退出" % len(files))

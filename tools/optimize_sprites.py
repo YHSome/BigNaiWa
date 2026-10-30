@@ -23,7 +23,7 @@ import re
 from PIL import Image
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-FRUIT_DIR = os.path.join(ROOT, "assets", "fruits")
+FRUIT_DIR = os.path.join(ROOT, "v1", "assets", "fruits")
 
 ASSET_FILL = 0.92     # 必须和 game.js 里的 ASSET_FILL 一致
 MAX_SIZE = 512        # 最大一级的画布边长
@@ -45,7 +45,7 @@ def main():
     args = ap.parse_args()
 
     # 半径从 game.js 的 FRUITS 表里读，避免两边写死两套
-    src_js = open(os.path.join(ROOT, "game.js"), encoding="utf-8").read()
+    src_js = open(os.path.join(ROOT, "v1", "game.js"), encoding="utf-8").read()
     radii = [int(m) for m in re.findall(r"r:\s*(\d+)", src_js)][:11]
     if len(radii) != 11:
         print("没从 game.js 里解析出 11 个半径，退出（拿到 %d 个）" % len(radii))
