@@ -251,27 +251,30 @@
     return false;
   }
 
-  /* 上一次 cleanName 是否因为屏蔽词被替换（只用于提示用户） */
+  /* 上一次 commitName 是否命中屏蔽词（只用于提示用户） */
   let nameBlocked = false;
 
   function cleanName(raw) {
     // 去掉控制字符和首尾空白，限长
     let n = String(raw || '').replace(/[\u0000-\u001f\u007f]/g, '').trim();
     if (n.length > 12) n = n.slice(0, 12);
-    // 含屏蔽词 → 一律记成「默认用户」
-    if (hasBannedWord(n)) {
-      nameBlocked = true;
-      n = DEFAULT_NAME;
-    }
+    /* 注意：这里**不**把命中屏蔽词的名字改写成「默认用户」。
+       惩罚放在提交那一步（命中就不上榜），否则名字先被洗干净，
+       结算时就永远拦不到，等于没罚。 */
     return n;
   }
 
-  /* 统一入口：清洗（含屏蔽词）+ 保存 + 必要时提示 */
+  /* 统一入口：清洗 + 保存 + 命中就提醒 */
   function commitName(raw) {
     nameBlocked = false;
     const n = cleanName(raw);
     saveName(n);
-    if (nameBlocked) setMsg('昵称含屏蔽词，已改用「' + DEFAULT_NAME + '」', 'bad');
+    nameBlocked = hasBannedWord(n);
+    if (nameBlocked) {
+      setMsg('昵称含屏蔽词，这样的昵称不会上榜 —— 改好昵称后结算会照常提交', 'bad');
+    } else if (msgEl && msgEl.textContent.indexOf('屏蔽词') >= 0) {
+      setMsg('', '');          // 昵称改干净了，把之前的警告收掉
+    }
     paintName();
     if (nickInput) nickInput.value = loadName();
     return n;
@@ -409,6 +412,15 @@
   /* 真正写库 */
   function pushScore(name, score, viaRetry) {
     if (submitting) return Promise.resolve(false);
+
+    /* 昵称含屏蔽词 → 本局不上榜（一条都不写库）。
+       分数还留着（pendingScore），玩家把昵称改干净后点「重试提交」还能补上榜。 */
+    if (hasBannedWord(name)) {
+      setMsg('昵称含屏蔽词，本局成绩不上榜。改好昵称后点下面的「重试提交」', 'bad');
+      showRetry(true);
+      return Promise.resolve(false);
+    }
+
     if (!viaRetry) {
       const now = Date.now();
       if (now - lastSubmitAt < MUTE_MIN_GAP) {
