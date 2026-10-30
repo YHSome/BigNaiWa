@@ -123,12 +123,23 @@ function boardNames() {
     ['ＦＵＣＫ', '全角英文脏话'],
     ['傻 逼', '辱骂词插空格'],
     ['你妈', '辱骂词'],
+    ['蒋x介x石', '隔字：蒋…介…石'],
+    ['蒋·介·石', '隔字：符号分隔'],
+    ['习1近', '隔字：数字夹在中间'],
+    ['傻x逼', '隔字：辱骂词'],
+    ['你！妈', '隔字：中文感叹号'],
     ['FUCK you', '英文脏话（大小写/空格）'],
     ['加微信123', '导流词']
   ];
   banned.forEach(([raw, why]) => {
     Board.setName(raw);
     ok(savedName() === DEFAULT_NAME, '「' + raw + '」（' + why + '）→ ' + savedName());
+  });
+
+  console.log('\n[2.5] 跨度超限不算命中（避免无限宽松）');
+  ['习一二三四近'].forEach((raw) => {
+    Board.setName(raw);
+    ok(savedName() === raw, '「' + raw + '」中间隔了 5 个字，超出跨度上限 → 不拦');
   });
 
   console.log('\n[3] 正常昵称不受影响');
